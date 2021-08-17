@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.0;
 
-import "./nf-token.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 interface PriceOracle {
 	function getPrice() external returns (uint);
@@ -21,10 +21,13 @@ struct Vault {
 	address oracle;
 }
 
-contract XHedge is NFToken {
+contract XHedge is ERC721 {
 	mapping (uint => Vault) internal snToVault; //TODO: use sep101
 	uint internal nextSN;
 	event Vote(address indexed validator, uint power);
+
+	constructor() ERC721("XHedge", "XH") {
+	}
 
 	function createVault(
 		uint64 initCollateralRate, 
@@ -65,7 +68,7 @@ contract XHedge is NFToken {
 	}
 
 	function _liquidate(uint token, bool isCloseout) internal {
-		require(idToOwner[token] == msg.sender);
+		require(ownerOf(token) == msg.sender);
 		uint sn = token>>1;
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
@@ -89,8 +92,8 @@ contract XHedge is NFToken {
 		uint leverNFT = hedgeNFT + 1;
 		_burn(hedgeNFT);
 		_burn(leverNFT);
-		address hedgeOwner = idToOwner[hedgeNFT];
-		address leverOwner = idToOwner[leverNFT];
+		address hedgeOwner = ownerOf(hedgeNFT);
+		address leverOwner = ownerOf(leverNFT);
 		delete snToVault[sn];
 		hedgeOwner.call{value: hedgeAmount}(""); //TODO: use SEP206
 		leverOwner.call{value: vault.amount - hedgeAmount}(""); //TODO: use SEP206
@@ -101,7 +104,7 @@ contract XHedge is NFToken {
 		require(vault.amount != 0);
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
-		require(msg.sender == idToOwner[hedgeNFT] && msg.sender == idToOwner[leverNFT]);
+		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT));
 		delete snToVault[sn];
 		msg.sender.call{value: vault.amount}(""); //TODO: use SEP206
 	}
@@ -110,7 +113,7 @@ contract XHedge is NFToken {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
 		uint leverNFT = (sn<<1)+1;
-		require(msg.sender == idToOwner[leverNFT]);
+		require(msg.sender == ownerOf(leverNFT));
 		if(amount > vault.amount) {
 			require(msg.value == amount - vault.amount);
 			vault.amount = amount;
@@ -140,7 +143,7 @@ contract XHedge is NFToken {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
 		uint leverNFT = (sn<<1)+1;
-		require(msg.sender == idToOwner[leverNFT]);
+		require(msg.sender == ownerOf(leverNFT));
 		vault.validatorToVote = validatorToVote;
 		snToVault[sn] = vault;
 	}
