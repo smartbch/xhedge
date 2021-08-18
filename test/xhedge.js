@@ -3,45 +3,64 @@ const Oracle = artifacts.require("MockOracle");
 
 contract("XHedge", async (accounts) => {
 
+    const alice = accounts[0];
+    const bob   = accounts[1];
+
     const _1e18              = 10n ** 18n;
     const initOraclePrice    = 600n * _1e18;
+  
+    // default createVault() args
     const initCollateralRate = _1e18 / 2n; // 0.5
     const minCollateralRate  = _1e18 / 5n; // 0.2
     const closeoutPenalty    = _1e18 / 10n;// 0.1
-    const defaultMatureTime  = 30; // 30m
+    const matureTime         = 30; // 30m
     const validatorToVote    = accounts[9];
+    const hedgeValue         = 600n * _1e18;
+    const amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
 
+    let gasPrice;
     let oracle;
     let xhedge;
 
     before(async () => {
-        oracle = await Oracle.new(initOraclePrice);
-        xhedge = await XHedge.new();
+        gasPrice = await web3.eth.getGasPrice();
+        oracle = await Oracle.new(initOraclePrice, { from: bob });
+        xhedge = await XHedge.new({ from: bob });
     });
 
     it('createVault', async () => {
-        const hedgeValue = 600n * _1e18;
-        const amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
-        const matureTime = 30; // 30m
+        const balance0 = await web3.eth.getBalance(alice);
+        const result = await createVaultWithDefaultArgs();
+        const balance1 = await web3.eth.getBalance(alice);
 
-        const result = await xhedge.createVault(
+        const gasFee = getGasFee(result, gasPrice);
+        assert.equal(BigInt(balance0) - BigInt(balance1), BigInt(gasFee) + amt);
+
+        assert.equal(await xhedge.balanceOf(alice), 2);
+        let tokenIds = getTokenIds(result);
+        console.log(tokenIds);
+        assert.equal(await xhedge.ownerOf(tokenIds[0]), alice);
+        assert.equal(await xhedge.ownerOf(tokenIds[1]), alice);
+    });
+
+    async function createVaultWithDefaultArgs() {
+        return await xhedge.createVault(
             initCollateralRate.toString(),
             minCollateralRate.toString(),
             closeoutPenalty.toString(),
-            defaultMatureTime,
+            matureTime,
             validatorToVote,
             hedgeValue.toString(),
             oracle.address,
-            { from: accounts[0], value: amt.toString() }
+            { from: alice, value: amt.toString() }
         );
-
-        let tokenIds = getTokenIds(result);
-        console.log(tokenIds);
-        assert.equal(await xhedge.balanceOf(accounts[0]), 2);
-    });
+    }
 
 });
 
+function getGasFee(result, gasPrice) {
+    return result.receipt.gasUsed * gasPrice;
+}
 
 function getTokenIds(result) {
     const logs = result.logs.filter(log => log.event == 'Transfer');
