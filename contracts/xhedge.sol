@@ -23,9 +23,13 @@ struct Vault {
 
 contract XHedge is ERC721 {
 	mapping (uint => Vault) internal snToVault; //TODO: use sep101
+	mapping (address => uint) public valToVotes; 
 	uint[128] internal nextSN;
-	event Vote(address indexed validator, uint power);
 	uint constant GlobalMinimumAmount = 10**15; //0.001 BCH
+
+	event UpdateValidatorToVote(uint indexed sn, address validatorToVote);
+	event UpdateAmount(uint indexed sn, uint96 newAmount);
+	event Vote(address indexed validator, uint power);
 
 	constructor() ERC721("XHedge", "XH") {
 	}
@@ -122,14 +126,16 @@ contract XHedge is ERC721 {
 			require(msg.value == amount - vault.amount);
 			vault.amount = amount;
 			snToVault[sn] = vault;
+			emit UpdateAmount(sn, amount);
 			return;
 		}
 
 		// because the amount will be changed, we vote here
 		if(block.timestamp > 60*vault.lastVoteTime) {
 			uint power = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
-			emit Vote(vault.validatorToVote, power);
-			//TODO: must call some predefined smart contract here
+			address val = vault.validatorToVote;
+			emit Vote(val, power);
+			valToVotes[val] = valToVotes[val] + power;
 		}
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
 
@@ -142,6 +148,7 @@ contract XHedge is ERC721 {
 		vault.amount = amount;
 		snToVault[sn] = vault;
 		msg.sender.call{value: diff - fee}(""); //TODO: use SEP206
+		emit UpdateAmount(sn, amount);
 	}
 
 	function changeValidatorToVote(uint sn, address validatorToVote) external {
@@ -151,6 +158,7 @@ contract XHedge is ERC721 {
 		require(msg.sender == ownerOf(leverNFT));
 		vault.validatorToVote = validatorToVote;
 		snToVault[sn] = vault;
+		emit UpdateValidatorToVote(sn, validatorToVote);
 	}
 	
 	function vote(uint sn) external {
@@ -158,8 +166,9 @@ contract XHedge is ERC721 {
 		require(vault.amount != 0);
 		if(block.timestamp > 60*vault.lastVoteTime) {
 			uint power = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
-			emit Vote(vault.validatorToVote, power);
-			//TODO: must call some predefined smart contract here
+			address val = vault.validatorToVote;
+			emit Vote(val, power);
+			valToVotes[val] = valToVotes[val] + power;
 		}
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
 		snToVault[sn] = vault;
