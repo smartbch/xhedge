@@ -53,8 +53,8 @@ contract XHedge is ERC721 {
 		if(msg.value > vault.amount) {
 			msg.sender.call{value: msg.value - vault.amount}(""); //TODO: use SEP206
 		}
-		_mint(msg.sender, (nextSN<<1)+1); //the LeverNFT
-		_mint(msg.sender, nextSN<<1); //the HedgeNFT
+		_safeMint(msg.sender, (nextSN<<1)+1); //the LeverNFT
+		_safeMint(msg.sender, nextSN<<1); //the HedgeNFT
 		snToVault[nextSN] = vault;
 		nextSN = nextSN + 1;
 	}
