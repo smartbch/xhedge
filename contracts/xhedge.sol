@@ -60,9 +60,9 @@ contract XHedge is ERC721 {
 		vault.oracle = oracle;
 		uint price = PriceOracle(oracle).getPrice();
 		uint amount = (10**18 + uint(initCollateralRate)) * uint(hedgeValue) / price;
-		require(amount != 0);
-		require(msg.value >= amount);
-		require(amount >= GlobalMinimumAmount);
+		require(amount != 0, "AMT_IS_0");
+		require(msg.value >= amount, "AMT_GT_MSG_VAL");
+		require(amount >= GlobalMinimumAmount, "AMT_LT_MIN");
 		vault.amount = uint96(amount);
 		if(msg.value > amount) {
 			msg.sender.call{value: msg.value - amount}(""); //TODO: use SEP206
@@ -85,18 +85,18 @@ contract XHedge is ERC721 {
 	}
 
 	function _liquidate(uint token, bool isCloseout) internal {
-		require(ownerOf(token) == msg.sender);
+		require(ownerOf(token) == msg.sender, "NOT_OWNER");
 		uint sn = token>>1;
 		Vault memory vault = snToVault[sn];
-		require(vault.amount != 0);
+		require(vault.amount != 0, "AMT_IS_0");
 		uint price = PriceOracle(vault.oracle).getPrice();
 		if(isCloseout) {
-			require(block.timestamp < uint(vault.matureTime)*60);
+			require(block.timestamp < uint(vault.matureTime)*60, "TIMEOUT");
 			uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
 			require(vault.amount <= minAmount);
-			require(token%2==0); // a HedgeNFT
+			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
 		} else {
-			require(block.timestamp >= uint(vault.matureTime)*60);
+			require(block.timestamp >= uint(vault.matureTime)*60, "NOT_MATURE");
 		}
 		uint hedgeAmount = uint(vault.hedgeValue) * price;
 		if(isCloseout) {
@@ -119,7 +119,7 @@ contract XHedge is ERC721 {
 		require(vault.amount != 0);
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
-		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT));
+		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		delete snToVault[sn];
 		msg.sender.call{value: vault.amount}(""); //TODO: use SEP206
 	}
@@ -128,9 +128,9 @@ contract XHedge is ERC721 {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
 		uint leverNFT = (sn<<1)+1;
-		require(msg.sender == ownerOf(leverNFT));
+		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		if(amount > vault.amount) {
-			require(msg.value == amount - vault.amount);
+			require(msg.value == amount - vault.amount, "BAD_MSG_VAL");
 			vault.amount = amount;
 			snToVault[sn] = vault;
 			emit UpdateAmount(sn, amount);
@@ -156,7 +156,7 @@ contract XHedge is ERC721 {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
 		uint leverNFT = (sn<<1)+1;
-		require(msg.sender == ownerOf(leverNFT));
+		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		//TODO: make sure validatorToVote is already registered as a validator
 		vault.validatorToVote = validatorToVote;
 		snToVault[sn] = vault;
