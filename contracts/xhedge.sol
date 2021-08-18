@@ -21,25 +21,45 @@ struct Vault {
 	uint96  amount; // at most 85 bits (21 * 1e6 * 1e18)
 }
 
+// @dev XHedge splits BCH into a pair of LeverNFT and HedgeNFT. When this pair of NFTs get burnt, the BCH
+// are liquidated to the owners of them.
+// The LeverNFT's owner can also vote for a validator on smartBCH.
 contract XHedge is ERC721 {
 	mapping (uint => Vault) public snToVault; //TODO: use sep101
+
+	// This is an array of counters for calculating a new NFT's id.
+	// we use 128 counters to avoid inter-dependency between the transactions calling createVault
 	uint[128] internal nextSN; // we use an array of nextSN counters to avoid inter-dependency
 
-	// These two variables are filled during an epoch and after switching epoch, will be cleared by the 
-	// underlying golang logic in staking contract
+
+	// The validators' accumulated votes in current epoch. When switching epoch, this variable will be
+	// be cleared by the underlying golang logic in staking contract
 	mapping (address => uint) public valToVotes; 
+
+	// The validators who have ever get voted in current epoch. When switching epoch, this variable will be
+	// be cleared by the underlying golang logic in staking contract
 	address[] public validators;
 
-	// To prevent dust attack, we need to set a lower bound
+	// To prevent dust attack, we need to set a lower bound for how much BCH a vault locks
 	uint constant GlobalMinimumAmount = 10**15; //0.001 BCH
 
-	event UpdateValidatorToVote(uint indexed sn, address indexed validatorToVote);
+	// @dev Emitted when `sn` vault has updated its supported validator to `newValidator`.
+	event UpdateValidatorToVote(uint indexed sn, address indexed newValidator);
+
+	// @dev Emitted when `sn` vault has updated its locked BCH amount to `newAmount`.
 	event UpdateAmount(uint indexed sn, uint96 newAmount);
+
+	// @dev Emitted when `sn` vault has voted `incrVotes` to `validator`, making its accumulated votes to be `newAccumulatedVotes`.
 	event Vote(uint indexed sn, address indexed validator, uint incrVotes, uint newAccumulatedVotes);
 
-	constructor() ERC721("XHedge", "XH") {
-	}
+	constructor() ERC721("XHedge", "XH") {}
 
+	// @dev Create a vault to lock some BCH and mint a pair of LeverNFT/HedgeNFT
+	// The id of LeverNFT (HedgeNFT) is `sn*2+1` (`sn*2`), respectively, where `sn` is the serial number of the vault.
+	//
+	// Requirements:
+	//
+	// - The paid value for calling
 	function createVault(
 		uint64 initCollateralRate, 
 		uint64 minCollateralRate,
@@ -60,9 +80,8 @@ contract XHedge is ERC721 {
 		vault.oracle = oracle;
 		uint price = PriceOracle(oracle).getPrice();
 		uint amount = (10**18 + uint(initCollateralRate)) * uint(hedgeValue) / price;
-		require(amount != 0, "AMT_IS_0");
-		require(msg.value >= amount, "AMT_GT_MSG_VAL");
-		require(amount >= GlobalMinimumAmount, "AMT_LT_MIN");
+		require(msg.value >= amount, "NOT_ENOUGH_PAID");
+		require(amount >= GlobalMinimumAmount, "LOCKED_AMOUNT_TOO_SMALL");
 		vault.amount = uint96(amount);
 		if(msg.value > amount) {
 			msg.sender.call{value: msg.value - amount}(""); //TODO: use SEP206
@@ -88,10 +107,10 @@ contract XHedge is ERC721 {
 		require(ownerOf(token) == msg.sender, "NOT_OWNER");
 		uint sn = token>>1;
 		Vault memory vault = snToVault[sn];
-		require(vault.amount != 0, "AMT_IS_0");
+		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint price = PriceOracle(vault.oracle).getPrice();
 		if(isCloseout) {
-			require(block.timestamp < uint(vault.matureTime)*60, "TIMEOUT");
+			require(block.timestamp < uint(vault.matureTime)*60, "ALREADY_MATURE");
 			uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
 			require(vault.amount <= minAmount);
 			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
@@ -116,7 +135,7 @@ contract XHedge is ERC721 {
 
 	function burn(uint sn) external {
 		Vault memory vault = snToVault[sn];
-		require(vault.amount != 0);
+		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
 		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_OWNER");
@@ -126,7 +145,7 @@ contract XHedge is ERC721 {
 
 	function changeAmount(uint sn, uint96 amount) external payable {
 		Vault memory vault = snToVault[sn];
-		require(vault.amount != 0);
+		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint leverNFT = (sn<<1)+1;
 		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		if(amount > vault.amount) {
