@@ -41,7 +41,7 @@ contract XHedge is ERC721 {
 	address[] public validators;
 
 	// To prevent dust attack, we need to set a lower bound for how much BCH a vault locks
-	uint constant GlobalMinimumAmount = 10**15; //0.001 BCH
+	uint constant GlobalMinimumAmount = 10**14; //0.0001 BCH
 
 	// @dev Emitted when `sn` vault has updated its supported validator to `newValidator`.
 	event UpdateValidatorToVote(uint indexed sn, address indexed newValidator);
@@ -54,12 +54,21 @@ contract XHedge is ERC721 {
 
 	constructor() ERC721("XHedge", "XH") {}
 
-	// @dev Create a vault to lock some BCH and mint a pair of LeverNFT/HedgeNFT
+	// @dev Create a vault which locks some BCH, and mint a pair of LeverNFT/HedgeNFT
 	// The id of LeverNFT (HedgeNFT) is `sn*2+1` (`sn*2`), respectively, where `sn` is the serial number of the vault.
+	// @param initCollateralRate the initial collateral rate
+	// @param minCollateralRate the minimum collateral rate
+	// @param closeoutPenalty the penalty for LeverNFT's owner at closeout, with 18 decimal digits
+	// @param matureTime the time when any owner of this pair of NFTs can initiate liquidation without penalty
+	// @param validatorToVote the validator that the LeverNFT's owner would like to support
+	// @param hedgeValue the value (measured in USD) that the LeverNFT contains
+	// @param oracle the address of a smart contract which can provide the price of BCH (measured in USD). It must support the `PriceOracle` interface
 	//
 	// Requirements:
 	//
-	// - The paid value for calling
+	// - The paid value for calling this function must be no less than the calculated amount. (If paid more, the extra coins will be returned)
+	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dust attack
+
 	function createVault(
 		uint64 initCollateralRate, 
 		uint64 minCollateralRate,
@@ -75,7 +84,6 @@ contract XHedge is ERC721 {
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
 		vault.hedgeValue = hedgeValue;
 		vault.matureTime = matureTime;
-		//TODO: make sure validatorToVote is already registered as a validator
 		vault.validatorToVote = validatorToVote;
 		vault.oracle = oracle;
 		uint price = PriceOracle(oracle).getPrice();
@@ -83,7 +91,7 @@ contract XHedge is ERC721 {
 		require(msg.value >= amount, "NOT_ENOUGH_PAID");
 		require(amount >= GlobalMinimumAmount, "LOCKED_AMOUNT_TOO_SMALL");
 		vault.amount = uint96(amount);
-		if(msg.value > amount) {
+		if(msg.value > amount) { // return the extra coins
 			msg.sender.call{value: msg.value - amount}(""); //TODO: use SEP206
 		}
 		uint idx = uint160(msg.sender) & 127;
@@ -95,14 +103,28 @@ contract XHedge is ERC721 {
 		snToVault[sn] = vault;
 	}
 
-	function liquidate(uint token) external {
-		_liquidate(token, false);
-	}
-
+	// @dev Initiate liquidation before mature time
+	// @param token the HedgeNFT whose owner wants to liquidate
+	// Requirements:
+	//
+	// - The token must exist (not burnt yet)
+	// - Current timestamp must be smaller than the mature time
+	// - Current price must be low enough such that collateral rate is below the predefined minimum value
 	function closeout(uint token) external {
 		_liquidate(token, true);
 	}
 
+	// @dev Initiate liquidation after mature time
+	// @param token the HedgeNFT or LeverNFT whose owner wants to liquidate
+	// Requirements:
+	//
+	// - The token must exist (not burnt yet)
+	// - Current timestamp must be larger than or equal to the mature time
+	function liquidate(uint token) external {
+		_liquidate(token, false);
+	}
+
+	// @dev Initiate liquidation before mature time (isCloseout=true) or after mature time (isCloseout=false) 
 	function _liquidate(uint token, bool isCloseout) internal {
 		require(ownerOf(token) == msg.sender, "NOT_OWNER");
 		uint sn = token>>1;
@@ -133,53 +155,89 @@ contract XHedge is ERC721 {
 		ownerOf(leverNFT).call{value: vault.amount - hedgeAmount}(""); //TODO: use SEP206
 	}
 
+	// @dev Burn the vault's LeverNFT&HedgeNFT, delete the vault, and get back all the locked BCH
+	// @param sn the serial number of the vault
+	// Requirements:
+	//
+	// - The vault must exist (not deleted yet)
+	// - The sender must own both the LeverNFT and the HedgeNFT
 	function burn(uint sn) external {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
 		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_OWNER");
+		_burn(hedgeNFT);
+		_burn(leverNFT);
 		delete snToVault[sn];
 		msg.sender.call{value: vault.amount}(""); //TODO: use SEP206
 	}
 
-	function changeAmount(uint sn, uint96 amount) external payable {
+	// @dev change the amount of BCH locked in the `sn` vault to `newAmount`
+	// Vote with the accumulated coin-days in the `sn` vault and reset coin-days to zero
+	//
+	// @param sn the serial number of the vault
+	// @param newAmount the new amount after changing
+	// Requirements:
+	//
+	// - The vault must exist (not deleted yet)
+	// - The sender must be the LeverNFT's owner, if the amount is decreased
+	// - Enough BCH must be transferred when calling this function, if the amount is increased
+	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dust attack
+	// - The new amount of locked BCH must meet the initial collateral rate requirement
+	function changeAmount(uint sn, uint96 newAmount) external payable {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint leverNFT = (sn<<1)+1;
-		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
-		if(amount > vault.amount) {
-			require(msg.value == amount - vault.amount, "BAD_MSG_VAL");
-			vault.amount = amount;
+		if(newAmount > vault.amount) {
+			require(msg.value == newAmount - vault.amount, "BAD_MSG_VAL");
+			vault.amount = newAmount;
 			snToVault[sn] = vault;
-			emit UpdateAmount(sn, amount);
+			emit UpdateAmount(sn, newAmount);
 			return;
 		}
 
 		// because the amount will be changed, we vote here
 		_vote(vault, sn);
 
-		uint diff = vault.amount - amount;
+		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
+		uint diff = vault.amount - newAmount;
 		uint fee = diff * 5 / 1000; // fee as BCH
 		uint price = PriceOracle(vault.oracle).getPrice();
 		vault.hedgeValue = vault.hedgeValue + uint96(fee*price/*fee as USD*/);
-		uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
-		require(amount > minAmount && amount >= GlobalMinimumAmount);
-		vault.amount = amount;
+		uint minAmount = (10**18 + uint(vault.initCollateralRate)) * uint(vault.hedgeValue) / price;
+		require(newAmount > minAmount && newAmount >= GlobalMinimumAmount);
+		vault.amount = newAmount;
 		snToVault[sn] = vault;
 		msg.sender.call{value: diff - fee}(""); //TODO: use SEP206
-		emit UpdateAmount(sn, amount);
+		emit UpdateAmount(sn, newAmount);
 	}
 
-	function changeValidatorToVote(uint sn, address validatorToVote) external {
+	// @dev Make `newValidator` the validator to whom the LeverNFT's owner would like to support
+	// Requirements:
+	//
+	// - The vault must exist (not deleted yet)
+	// - The sender must be the LeverNFT's owner
+	function changeValidatorToVote(uint leverNFT, address newValidator) external {
+		uint sn = leverNFT>>1;
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
-		uint leverNFT = (sn<<1)+1;
 		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
-		//TODO: make sure validatorToVote is already registered as a validator
-		vault.validatorToVote = validatorToVote;
+		vault.validatorToVote = newValidator;
 		snToVault[sn] = vault;
-		emit UpdateValidatorToVote(sn, validatorToVote);
+		emit UpdateValidatorToVote(sn, newValidator);
+	}
+
+
+	// @dev Vote with the accumulated coin-days in the `sn` vault and reset coin-days to zero
+	// Requirements:
+	//
+	// - The vault must exist (not deleted yet)
+	function vote(uint sn) external {
+		Vault memory vault = snToVault[sn];
+		require(vault.amount != 0);
+		_vote(vault, sn);
+		snToVault[sn] = vault;
 	}
 
 	function _vote(Vault memory vault, uint sn) internal {
@@ -195,12 +253,5 @@ contract XHedge is ERC721 {
 			valToVotes[val] = newVotes;
 		}
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
-	}
-
-	function vote(uint sn) external {
-		Vault memory vault = snToVault[sn];
-		require(vault.amount != 0);
-		_vote(vault, sn);
-		snToVault[sn] = vault;
 	}
 }
