@@ -24,12 +24,13 @@ struct Vault {
 contract XHedge is ERC721 {
 	mapping (uint => Vault) internal snToVault; //TODO: use sep101
 	mapping (address => uint) public valToVotes; 
+	address[] public validators;
 	uint[128] internal nextSN;
 	uint constant GlobalMinimumAmount = 10**15; //0.001 BCH
 
 	event UpdateValidatorToVote(uint indexed sn, address validatorToVote);
 	event UpdateAmount(uint indexed sn, uint96 newAmount);
-	event Vote(address indexed validator, uint power);
+	event Vote(address indexed validator, uint indexed sn, uint incrVotes, uint newAccumulatedVotes);
 
 	constructor() ERC721("XHedge", "XH") {
 	}
@@ -49,6 +50,7 @@ contract XHedge is ERC721 {
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
 		vault.hedgeValue = hedgeValue;
 		vault.matureTime = matureTime;
+		//TODO: make sure validatorToVote is already registered as a validator
 		vault.validatorToVote = validatorToVote;
 		vault.oracle = oracle;
 		uint price = PriceOracle(oracle).getPrice();
@@ -131,13 +133,7 @@ contract XHedge is ERC721 {
 		}
 
 		// because the amount will be changed, we vote here
-		if(block.timestamp > 60*vault.lastVoteTime) {
-			uint power = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
-			address val = vault.validatorToVote;
-			emit Vote(val, power);
-			valToVotes[val] = valToVotes[val] + power;
-		}
-		vault.lastVoteTime = uint32((block.timestamp+59)/60);
+		_vote(vault, sn);
 
 		uint diff = vault.amount - amount;
 		uint fee = diff * 5 / 1000; // fee as BCH
@@ -156,21 +152,31 @@ contract XHedge is ERC721 {
 		require(vault.amount != 0);
 		uint leverNFT = (sn<<1)+1;
 		require(msg.sender == ownerOf(leverNFT));
+		//TODO: make sure validatorToVote is already registered as a validator
 		vault.validatorToVote = validatorToVote;
 		snToVault[sn] = vault;
 		emit UpdateValidatorToVote(sn, validatorToVote);
 	}
-	
+
+	function _vote(Vault memory vault, uint sn) internal {
+		if(block.timestamp > 60*vault.lastVoteTime) {
+			uint incrVotes = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
+			address val = vault.validatorToVote;
+			uint oldVotes = valToVotes[val];
+			if(oldVotes == 0) { // find a new validator
+				validators.push(val);
+			}
+			uint newVotes = oldVotes + incrVotes;
+			emit Vote(val, sn, incrVotes, newVotes);
+			valToVotes[val] = newVotes;
+		}
+		vault.lastVoteTime = uint32((block.timestamp+59)/60);
+	}
+
 	function vote(uint sn) external {
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
-		if(block.timestamp > 60*vault.lastVoteTime) {
-			uint power = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
-			address val = vault.validatorToVote;
-			emit Vote(val, power);
-			valToVotes[val] = valToVotes[val] + power;
-		}
-		vault.lastVoteTime = uint32((block.timestamp+59)/60);
+		_vote(vault, sn);
 		snToVault[sn] = vault;
 	}
 }
