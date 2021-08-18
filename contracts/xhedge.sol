@@ -22,15 +22,20 @@ struct Vault {
 }
 
 contract XHedge is ERC721 {
-	mapping (uint => Vault) internal snToVault; //TODO: use sep101
+	mapping (uint => Vault) public snToVault; //TODO: use sep101
+	uint[128] internal nextSN; // we use an array of nextSN counters to avoid inter-dependency
+
+	// These two variables are filled during an epoch and after switching epoch, will be cleared by the 
+	// underlying golang logic in staking contract
 	mapping (address => uint) public valToVotes; 
 	address[] public validators;
-	uint[128] internal nextSN;
+
+	// To prevent dust attack, we need to set a lower bound
 	uint constant GlobalMinimumAmount = 10**15; //0.001 BCH
 
-	event UpdateValidatorToVote(uint indexed sn, address validatorToVote);
+	event UpdateValidatorToVote(uint indexed sn, address indexed validatorToVote);
 	event UpdateAmount(uint indexed sn, uint96 newAmount);
-	event Vote(address indexed validator, uint indexed sn, uint incrVotes, uint newAccumulatedVotes);
+	event Vote(uint indexed sn, address indexed validator, uint incrVotes, uint newAccumulatedVotes);
 
 	constructor() ERC721("XHedge", "XH") {
 	}
@@ -167,7 +172,7 @@ contract XHedge is ERC721 {
 				validators.push(val);
 			}
 			uint newVotes = oldVotes + incrVotes;
-			emit Vote(val, sn, incrVotes, newVotes);
+			emit Vote(sn, val, incrVotes, newVotes);
 			valToVotes[val] = newVotes;
 		}
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
