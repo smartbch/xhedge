@@ -11,20 +11,21 @@ struct Vault {
 	uint64 initCollateralRate;
 	uint64 minCollateralRate;
 	uint64 closeoutPenalty;
-	uint32 lastVoteTime; // in minutes
 	uint32 matureTime; // in minutes
+	uint32 lastVoteTime; // in minutes
 
-	uint96  hedgeValue;
 	address validatorToVote;
+	uint96  hedgeValue;
 
-	uint96  amount; // at most 85 bits (21 * 1e6 * 1e18)
 	address oracle;
+	uint96  amount; // at most 85 bits (21 * 1e6 * 1e18)
 }
 
 contract XHedge is ERC721 {
 	mapping (uint => Vault) internal snToVault; //TODO: use sep101
-	uint internal nextSN;
+	uint[128] internal nextSN;
 	event Vote(address indexed validator, uint power);
+	uint constant GlobalMinimumAmount = 10**15; //0.001 BCH
 
 	constructor() ERC721("XHedge", "XH") {
 	}
@@ -34,8 +35,8 @@ contract XHedge is ERC721 {
 		uint64 minCollateralRate,
 		uint64 closeoutPenalty, 
 		uint32 matureTime,
-		uint96 hedgeValue, 
 		address validatorToVote, 
+		uint96 hedgeValue, 
 		address oracle) external payable {
 		Vault memory vault;
 		vault.initCollateralRate = initCollateralRate;
@@ -47,16 +48,21 @@ contract XHedge is ERC721 {
 		vault.validatorToVote = validatorToVote;
 		vault.oracle = oracle;
 		uint price = PriceOracle(oracle).getPrice();
-		vault.amount = uint96((10**18 + uint(initCollateralRate)) * uint(hedgeValue) / price);
-		require(vault.amount != 0);
-		require(msg.value >= vault.amount);
-		if(msg.value > vault.amount) {
-			msg.sender.call{value: msg.value - vault.amount}(""); //TODO: use SEP206
+		uint amount = (10**18 + uint(initCollateralRate)) * uint(hedgeValue) / price;
+		require(amount != 0);
+		require(msg.value >= amount);
+		require(amount >= GlobalMinimumAmount);
+		vault.amount = uint96(amount);
+		if(msg.value > amount) {
+			msg.sender.call{value: msg.value - amount}(""); //TODO: use SEP206
 		}
-		_safeMint(msg.sender, (nextSN<<1)+1); //the LeverNFT
-		_safeMint(msg.sender, nextSN<<1); //the HedgeNFT
-		snToVault[nextSN] = vault;
-		nextSN = nextSN + 1;
+		uint idx = uint160(msg.sender) & 127;
+		uint sn = nextSN[idx];
+		nextSN[idx] = sn + 1;
+		sn = (sn<<8)+(idx<<1);
+		_safeMint(msg.sender, (sn<<1)+1); //the LeverNFT
+		_safeMint(msg.sender, sn<<1); //the HedgeNFT
+		snToVault[sn] = vault;
 	}
 
 	function liquidate(uint token) external {
@@ -81,7 +87,7 @@ contract XHedge is ERC721 {
 		} else {
 			require(block.timestamp >= uint(vault.matureTime)*60);
 		}
-		uint hedgeAmount = vault.hedgeValue * price;
+		uint hedgeAmount = uint(vault.hedgeValue) * price;
 		if(isCloseout) {
 			hedgeAmount = hedgeAmount * (10**18 + vault.closeoutPenalty) / 10**18;
 		}
@@ -92,11 +98,9 @@ contract XHedge is ERC721 {
 		uint leverNFT = hedgeNFT + 1;
 		_burn(hedgeNFT);
 		_burn(leverNFT);
-		address hedgeOwner = ownerOf(hedgeNFT);
-		address leverOwner = ownerOf(leverNFT);
 		delete snToVault[sn];
-		hedgeOwner.call{value: hedgeAmount}(""); //TODO: use SEP206
-		leverOwner.call{value: vault.amount - hedgeAmount}(""); //TODO: use SEP206
+		ownerOf(hedgeNFT).call{value: hedgeAmount}(""); //TODO: use SEP206
+		ownerOf(leverNFT).call{value: vault.amount - hedgeAmount}(""); //TODO: use SEP206
 	}
 
 	function burn(uint sn) external {
@@ -125,15 +129,16 @@ contract XHedge is ERC721 {
 		if(block.timestamp > 60*vault.lastVoteTime) {
 			uint power = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
 			emit Vote(vault.validatorToVote, power);
+			//TODO: must call some predefined smart contract here
 		}
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
 
 		uint diff = vault.amount - amount;
-		uint fee = diff * 5 / 1000;
+		uint fee = diff * 5 / 1000; // fee as BCH
 		uint price = PriceOracle(vault.oracle).getPrice();
+		vault.hedgeValue = vault.hedgeValue + uint96(fee*price/*fee as USD*/);
 		uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
-		require(amount > minAmount + fee);
-		vault.hedgeValue = vault.hedgeValue + uint96(fee/price);
+		require(amount > minAmount && amount >= GlobalMinimumAmount);
 		vault.amount = amount;
 		snToVault[sn] = vault;
 		msg.sender.call{value: diff - fee}(""); //TODO: use SEP206
@@ -154,6 +159,7 @@ contract XHedge is ERC721 {
 		if(block.timestamp > 60*vault.lastVoteTime) {
 			uint power = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
 			emit Vote(vault.validatorToVote, power);
+			//TODO: must call some predefined smart contract here
 		}
 		vault.lastVoteTime = uint32((block.timestamp+59)/60);
 		snToVault[sn] = vault;
