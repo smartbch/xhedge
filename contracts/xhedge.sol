@@ -40,8 +40,11 @@ contract XHedge is ERC721 {
 	// be cleared by the underlying golang logic in staking contract
 	address[] public validators;
 
-	// To prevent dust attack, we need to set a lower bound for how much BCH a vault locks
+	// To prevent dusting attack, we need to set a lower bound for how much BCH a vault locks
 	uint constant GlobalMinimumAmount = 10**14; //0.0001 BCH
+
+	// To prevent dusting attack, we need to set a lower bound for coin-days when voting for a new validator
+	uint constant MinimumVotes = 500 * 10**18 * 24 * 3600; // 500 coin-days
 
 	// @dev Emitted when `sn` vault has updated its supported validator to `newValidator`.
 	event UpdateValidatorToVote(uint indexed sn, address indexed newValidator);
@@ -67,7 +70,7 @@ contract XHedge is ERC721 {
 	// Requirements:
 	//
 	// - The paid value for calling this function must be no less than the calculated amount. (If paid more, the extra coins will be returned)
-	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dust attack
+	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dusting attack
 
 	function createVault(
 		uint64 initCollateralRate, 
@@ -139,20 +142,20 @@ contract XHedge is ERC721 {
 		} else {
 			require(block.timestamp >= uint(vault.matureTime)*60, "NOT_MATURE");
 		}
-		uint hedgeAmount = uint(vault.hedgeValue) * price;
+		uint amountToHedgeOwner = uint(vault.hedgeValue) * 10**18 / price;
 		if(isCloseout) {
-			hedgeAmount = hedgeAmount * (10**18 + vault.closeoutPenalty) / 10**18;
+			amountToHedgeOwner = amountToHedgeOwner * (10**18 + vault.closeoutPenalty) / 10**18;
 		}
-		if(hedgeAmount > vault.amount) {
-			hedgeAmount = vault.amount;
+		if(amountToHedgeOwner > vault.amount) {
+			amountToHedgeOwner = vault.amount;
 		}
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
 		_burn(hedgeNFT);
 		_burn(leverNFT);
 		delete snToVault[sn];
-		ownerOf(hedgeNFT).call{value: hedgeAmount}(""); //TODO: use SEP206
-		ownerOf(leverNFT).call{value: vault.amount - hedgeAmount}(""); //TODO: use SEP206
+		ownerOf(hedgeNFT).call{value: amountToHedgeOwner}(""); //TODO: use SEP206
+		ownerOf(leverNFT).call{value: vault.amount - amountToHedgeOwner}(""); //TODO: use SEP206
 	}
 
 	// @dev Burn the vault's LeverNFT&HedgeNFT, delete the vault, and get back all the locked BCH
@@ -183,7 +186,7 @@ contract XHedge is ERC721 {
 	// - The vault must exist (not deleted yet)
 	// - The sender must be the LeverNFT's owner, if the amount is decreased
 	// - Enough BCH must be transferred when calling this function, if the amount is increased
-	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dust attack
+	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dusting attack
 	// - The new amount of locked BCH must meet the initial collateral rate requirement
 	function changeAmount(uint sn, uint96 newAmount) external payable {
 		Vault memory vault = snToVault[sn];
@@ -246,6 +249,7 @@ contract XHedge is ERC721 {
 			address val = vault.validatorToVote;
 			uint oldVotes = valToVotes[val];
 			if(oldVotes == 0) { // find a new validator
+				require(incrVotes >= MinimumVotes, "NOT_ENOUGH_VOTES_FOR_NEW_VAL");
 				validators.push(val);
 			}
 			uint newVotes = oldVotes + incrVotes;
