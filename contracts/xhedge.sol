@@ -137,7 +137,7 @@ contract XHedge is ERC721 {
 		if(isCloseout) {
 			require(block.timestamp < uint(vault.matureTime)*60, "ALREADY_MATURE");
 			uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
-			require(vault.amount <= minAmount);
+			require(vault.amount <= minAmount, "NOT_ALLOWED");
 			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
 		} else {
 			require(block.timestamp >= uint(vault.matureTime)*60, "NOT_MATURE");
@@ -151,11 +151,13 @@ contract XHedge is ERC721 {
 		}
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
+		address hedgeOwner = ownerOf(hedgeNFT);
+		address leverOwner = ownerOf(leverNFT);
 		_burn(hedgeNFT);
 		_burn(leverNFT);
 		delete snToVault[sn];
-		ownerOf(hedgeNFT).call{value: amountToHedgeOwner}(""); //TODO: use SEP206
-		ownerOf(leverNFT).call{value: vault.amount - amountToHedgeOwner}(""); //TODO: use SEP206
+		hedgeOwner.call{value: amountToHedgeOwner}(""); //TODO: use SEP206
+		leverOwner.call{value: vault.amount - amountToHedgeOwner}(""); //TODO: use SEP206
 	}
 
 	// @dev Burn the vault's LeverNFT&HedgeNFT, delete the vault, and get back all the locked BCH
