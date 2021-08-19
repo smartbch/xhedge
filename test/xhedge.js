@@ -24,6 +24,9 @@ contract("XHedge", async (accounts) => {
 
     before(async () => {
         gasPrice = await web3.eth.getGasPrice();
+    });
+
+    beforeEach(async () => {
         oracle = await Oracle.new(initOraclePrice, { from: bob });
         xhedge = await XHedge.new({ from: bob });
     });
@@ -37,10 +40,33 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balance0) - BigInt(balance1), BigInt(gasFee) + amt);
 
         assert.equal(await xhedge.balanceOf(alice), 2);
-        let tokenIds = getTokenIds(result);
-        console.log(tokenIds);
+        const tokenIds = getTokenIds(result);
+        //console.log(tokenIds);
         assert.equal(await xhedge.ownerOf(tokenIds[0]), alice);
         assert.equal(await xhedge.ownerOf(tokenIds[1]), alice);
+    });
+
+    it('burn', async () => {
+        const result1 = await createVaultWithDefaultArgs();
+        const tokenIds = getTokenIds(result1);
+        const sn = tokenIds[0] >> 1;
+        console.log(tokenIds, sn);
+
+        const balance0 = await web3.eth.getBalance(alice);
+        const result2 = await xhedge.burn(sn, { from: alice });
+        const balance1 = await web3.eth.getBalance(alice);
+
+        const gasFee = getGasFee(result2, gasPrice);
+        assert.equal(BigInt(balance1) - BigInt(balance0), amt - BigInt(gasFee));
+        assert.equal(await xhedge.balanceOf(alice), 0);
+    });
+
+    it('closeout', async () => {
+        // TODO
+    });
+
+    it('liquidate', async () => {
+        // TODO
     });
 
     async function createVaultWithDefaultArgs() {
