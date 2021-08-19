@@ -16,7 +16,7 @@ contract("XHedge", async (accounts) => {
     const initCollateralRate = _1e18 / 2n; // 0.5
     const minCollateralRate  = _1e18 / 5n; // 0.2
     const closeoutPenalty    = _1e18 / 100n; // 0.01
-    const matureTime         = Math.floor(Date.now() / 1000) + 30 * 60; // 30m
+    const matureTime         = Math.floor(Date.now() / 1000 / 60) + 30; // 30m
     const validatorToVote    = accounts[9];
     const hedgeValue         = 600n * _1e18;
     const amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
@@ -87,22 +87,77 @@ contract("XHedge", async (accounts) => {
         const amtToHedger = hedgeValue / 450n * (_1e18 + closeoutPenalty) / _1e18;
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0) + BigInt(gasFee), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
+        assert.equal(await xhedge.balanceOf(alice), 0);
     });
 
-    it('liquidate', async () => {
-        // TODO
+    it('liquidate_priceFall_byHedgeOwner', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId] = getTokenIds(result0);
+        const sn = leverId >> 1;
+        // console.log(leverId, hedgeId, sn);
+
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await oracle.setPrice(500n * _1e18, { from: oven });
+
+        const balanceOfAlice0 = await web3.eth.getBalance(alice);
+        const balanceOfLula0 = await web3.eth.getBalance(lula);
+        const result = await xhedge.liquidate(hedgeId, { from: alice });
+        const gasFee = getGasFee(result, gasPrice);
+        const balanceOfAlice1 = await web3.eth.getBalance(alice);
+        const balanceOfLula1 = await web3.eth.getBalance(lula);
+
+        // console.log(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0) + BigInt(gasFee)); // 1.2e18
+        // console.log(BigInt(balanceOfLula1) - BigInt(balanceOfLula0));                    // 0.3e18
+        const amtToHedger = hedgeValue / 500n;
+        assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0) + BigInt(gasFee), amtToHedger);
+        assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
+        assert.equal(await xhedge.balanceOf(alice), 0);
+    });
+
+    it('liquidate_priceRise_byLeverOwner', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId] = getTokenIds(result0);
+        const sn = leverId >> 1;
+        // console.log(leverId, hedgeId, sn);
+
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await oracle.setPrice(600n * _1e18, { from: oven });
+
+        const balanceOfAlice0 = await web3.eth.getBalance(alice);
+        const balanceOfLula0 = await web3.eth.getBalance(lula);
+        const result = await xhedge.liquidate(leverId, { from: lula });
+        const gasFee = getGasFee(result, gasPrice);
+        const balanceOfAlice1 = await web3.eth.getBalance(alice);
+        const balanceOfLula1 = await web3.eth.getBalance(lula);
+
+        // console.log(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0));                // 1.0e18
+        // console.log(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee)); // 0.5e18
+        const amtToHedger = hedgeValue / 600n;
+        assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0), amtToHedger);
+        assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), amt - amtToHedger);
+        assert.equal(await xhedge.balanceOf(alice), 0);
     });
 
     it('changeAmt', async () => {
         // TODO
     });
 
-    async function createVaultWithDefaultArgs() {
+    it('changeValidatorToVote', async () => {
+        // TODO
+    });
+
+    it('vote', async () => {
+        // TODO
+    });
+
+    async function createVaultWithDefaultArgs(args) {
+        let _matureTime = args && args.matureTime || matureTime;
+
         return await xhedge.createVault(
             initCollateralRate.toString(),
             minCollateralRate.toString(),
             closeoutPenalty.toString(),
-            matureTime,
+            _matureTime,
             validatorToVote,
             hedgeValue.toString(),
             oracle.address,
