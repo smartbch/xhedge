@@ -14,7 +14,7 @@ struct Vault {
 	uint32 matureTime; // in minutes
 	uint32 lastVoteTime; // in minutes
 
-	address validatorToVote;
+	uint validatorToVote;
 	uint96  hedgeValue;
 
 	address oracle;
@@ -34,11 +34,11 @@ contract XHedge is ERC721 {
 
 	// The validators' accumulated votes in current epoch. When switching epoch, this variable will be
 	// be cleared by the underlying golang logic in staking contract
-	mapping (address => uint) public valToVotes; 
+	mapping (uint => uint) public valToVotes; 
 
 	// The validators who have ever get voted in current epoch. When switching epoch, this variable will be
 	// be cleared by the underlying golang logic in staking contract
-	address[] public validators;
+	uint[] public validators;
 
 	// To prevent dusting attack, we need to set a lower bound for how much BCH a vault locks
 	uint constant GlobalMinimumAmount = 10**14; //0.0001 BCH
@@ -47,13 +47,13 @@ contract XHedge is ERC721 {
 	uint constant MinimumVotes = 500 * 10**18 * 24 * 3600; // 500 coin-days
 
 	// @dev Emitted when `sn` vault has updated its supported validator to `newValidator`.
-	event UpdateValidatorToVote(uint indexed sn, address indexed newValidator);
+	event UpdateValidatorToVote(uint indexed sn, uint indexed newValidator);
 
 	// @dev Emitted when `sn` vault has updated its locked BCH amount to `newAmount`.
 	event UpdateAmount(uint indexed sn, uint96 newAmount);
 
 	// @dev Emitted when `sn` vault has voted `incrVotes` to `validator`, making its accumulated votes to be `newAccumulatedVotes`.
-	event Vote(uint indexed sn, address indexed validator, uint incrVotes, uint newAccumulatedVotes);
+	event Vote(uint indexed sn, uint indexed validator, uint incrVotes, uint newAccumulatedVotes);
 
 	constructor() ERC721("XHedge", "XH") {}
 
@@ -77,7 +77,7 @@ contract XHedge is ERC721 {
 		uint64 minCollateralRate,
 		uint64 closeoutPenalty, 
 		uint32 matureTime,
-		address validatorToVote, 
+		uint validatorToVote, 
 		uint96 hedgeValue, 
 		address oracle) external payable {
 		Vault memory vault;
@@ -223,7 +223,7 @@ contract XHedge is ERC721 {
 	//
 	// - The vault must exist (not deleted yet)
 	// - The sender must be the LeverNFT's owner
-	function changeValidatorToVote(uint leverNFT, address newValidator) external {
+	function changeValidatorToVote(uint leverNFT, uint newValidator) external {
 		uint sn = leverNFT>>1;
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
@@ -248,7 +248,7 @@ contract XHedge is ERC721 {
 	function _vote(Vault memory vault, uint sn) internal {
 		if(block.timestamp > 60*vault.lastVoteTime) {
 			uint incrVotes = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
-			address val = vault.validatorToVote;
+			uint val = vault.validatorToVote;
 			uint oldVotes = valToVotes[val];
 			if(oldVotes == 0) { // find a new validator
 				require(incrVotes >= MinimumVotes, "NOT_ENOUGH_VOTES_FOR_NEW_VAL");
