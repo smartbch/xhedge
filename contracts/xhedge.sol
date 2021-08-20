@@ -10,15 +10,13 @@ interface PriceOracle {
 struct Vault {
 	uint64 initCollateralRate;
 	uint64 minCollateralRate;
-	uint64 closeoutPenalty;
-	uint32 matureTime; // in minutes
-	uint32 lastVoteTime; // in minutes
-
+	uint64 matureTime;
+	uint64 lastVoteTime;
 	uint validatorToVote;
-	uint96  hedgeValue;
-
+	uint96 hedgeValue;
 	address oracle;
-	uint96  amount; // at most 85 bits (21 * 1e6 * 1e18)
+	uint64 closeoutPenalty;
+	uint96 amount; // at most 85 bits (21 * 1e6 * 1e18)
 }
 
 // @dev XHedge splits BCH into a pair of LeverNFT and HedgeNFT. When this pair of NFTs get burnt, the BCH
@@ -76,15 +74,15 @@ contract XHedge is ERC721 {
 		uint64 initCollateralRate, 
 		uint64 minCollateralRate,
 		uint64 closeoutPenalty, 
-		uint32 matureTime,
+		uint64 matureTime,
 		uint validatorToVote, 
 		uint96 hedgeValue, 
-		address oracle) external payable {
+		address oracle) public payable {
 		Vault memory vault;
 		vault.initCollateralRate = initCollateralRate;
 		vault.minCollateralRate = minCollateralRate;
 		vault.closeoutPenalty = closeoutPenalty;
-		vault.lastVoteTime = uint32((block.timestamp+59)/60);
+		vault.lastVoteTime = uint64(block.timestamp);
 		vault.hedgeValue = hedgeValue;
 		vault.matureTime = matureTime;
 		vault.validatorToVote = validatorToVote;
@@ -105,6 +103,20 @@ contract XHedge is ERC721 {
 		_safeMint(msg.sender, sn<<1); //the HedgeNFT
 		snToVault[sn] = vault;
 	}
+
+	// @dev A "packed" version for createVault, to save space of calldata
+	function createVaultPacked(uint initCollateralRate_minCollateralRate_closeoutPenalty_matureTime,
+		uint validatorToVote, uint hedgeValue_oracle) external payable {
+		uint64 initCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>196);
+		uint64 minCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>128);
+		uint64 closeoutPenalty = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>64);
+		uint64 matureTime = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime);
+		uint96 hedgeValue = uint96(hedgeValue_oracle>>160);
+		address oracle = address(bytes20(uint160(hedgeValue_oracle)));
+		return createVault(initCollateralRate, minCollateralRate, closeoutPenalty, 
+			matureTime, validatorToVote, hedgeValue, oracle);
+	}
+
 
 	// @dev Initiate liquidation before mature time
 	// @param token the HedgeNFT whose owner wants to liquidate
@@ -135,12 +147,12 @@ contract XHedge is ERC721 {
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint price = PriceOracle(vault.oracle).getPrice();
 		if(isCloseout) {
-			require(block.timestamp < uint(vault.matureTime)*60, "ALREADY_MATURE");
+			require(block.timestamp < uint(vault.matureTime), "ALREADY_MATURE");
 			uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
 			require(vault.amount <= minAmount, "CAN_NOT_CLOSEOUT");
 			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
 		} else {
-			require(block.timestamp >= uint(vault.matureTime)*60, "NOT_MATURE");
+			require(block.timestamp >= uint(vault.matureTime), "NOT_MATURE");
 		}
 		uint amountToHedgeOwner = uint(vault.hedgeValue) * 10**18 / price;
 		if(isCloseout) {
@@ -247,8 +259,8 @@ contract XHedge is ERC721 {
 	}
 
 	function _vote(Vault memory vault, uint sn) internal {
-		if(block.timestamp > 60*vault.lastVoteTime) {
-			uint incrVotes = vault.amount * (block.timestamp - 60*vault.lastVoteTime);
+		if(block.timestamp > vault.lastVoteTime) {
+			uint incrVotes = vault.amount * (block.timestamp - vault.lastVoteTime);
 			uint val = vault.validatorToVote;
 			uint oldVotes = valToVotes[val];
 			if(oldVotes == 0) { // find a new validator
@@ -259,6 +271,6 @@ contract XHedge is ERC721 {
 			emit Vote(sn, val, incrVotes, newVotes);
 			valToVotes[val] = newVotes;
 		}
-		vault.lastVoteTime = uint32((block.timestamp+59)/60);
+		vault.lastVoteTime = uint32(block.timestamp);
 	}
 }
