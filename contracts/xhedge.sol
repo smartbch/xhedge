@@ -2,6 +2,7 @@
 pragma solidity 0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 interface PriceOracle {
 	function getPrice() external returns (uint);
@@ -23,7 +24,7 @@ struct Vault {
 // are liquidated to the owners of them.
 // The LeverNFT's owner can also vote for a validator on smartBCH.
 contract XHedge is ERC721 {
-	mapping (uint => Vault) public snToVault; //TODO: use sep101
+	mapping (uint => Vault) public snToVault;
 
 	// This is an array of counters for calculating a new NFT's id.
 	// we use 128 counters to avoid inter-dependency between the transactions calling createVault
@@ -56,6 +57,9 @@ contract XHedge is ERC721 {
 	// @dev The address of precompile smart contract for SEP101
 	address constant SEP101Contract = address(bytes20(uint160(0x2712)));
 
+	// @dev The address of precompile smart contract for SEP206
+	address constant SEP206Contract = address(bytes20(uint160(0x2711)));
+
 	constructor() ERC721("XHedge", "XH") {}
 
 	function saveVault(uint sn, Vault memory vault) private {
@@ -70,7 +74,10 @@ contract XHedge is ERC721 {
 		delete snToVault[sn];
 	}
 
-	
+	function safeTransfer(address receiver, uint value) private {
+		receiver.call{value: value, gas: 9000}("");
+	}
+
 	//function saveVault(uint sn, Vault memory vault) private {
 	//	bytes memory snBz = abi.encode(sn);
 	//	(uint w0, uint w2, uint w3) = (0, 0, 0);
@@ -119,6 +126,10 @@ contract XHedge is ERC721 {
 	//	require(success, "SEP101_DEL_FAIL");
 	//}
 
+	//function safeTransfer(address receiver, uint value) private {
+	//	IERC20(SEP206Contract).transfer(receiver, value);
+	//}
+
 	// @dev Create a vault which locks some BCH, and mint a pair of LeverNFT/HedgeNFT
 	// The id of LeverNFT (HedgeNFT) is `sn*2+1` (`sn*2`), respectively, where `sn` is the serial number of the vault.
 	// @param initCollateralRate the initial collateral rate
@@ -157,7 +168,7 @@ contract XHedge is ERC721 {
 		require(amount >= GlobalMinimumAmount, "LOCKED_AMOUNT_TOO_SMALL");
 		vault.amount = uint96(amount);
 		if(msg.value > amount) { // return the extra coins
-			msg.sender.call{value: msg.value - amount}(""); //TODO: use SEP206
+			safeTransfer(msg.sender, msg.value - amount);
 		}
 		uint idx = uint160(msg.sender) & 127;
 		uint sn = nextSN[idx];
@@ -233,8 +244,8 @@ contract XHedge is ERC721 {
 		_burn(hedgeNFT);
 		_burn(leverNFT);
 		deleteVault(sn);
-		hedgeOwner.call{value: amountToHedgeOwner}(""); //TODO: use SEP206
-		leverOwner.call{value: vault.amount - amountToHedgeOwner}(""); //TODO: use SEP206
+		safeTransfer(hedgeOwner, amountToHedgeOwner);
+		safeTransfer(leverOwner, vault.amount - amountToHedgeOwner);
 	}
 
 	// @dev Burn the vault's LeverNFT&HedgeNFT, delete the vault, and get back all the locked BCH
@@ -253,7 +264,7 @@ contract XHedge is ERC721 {
 		_burn(hedgeNFT);
 		_burn(leverNFT);
 		deleteVault(sn);
-		msg.sender.call{value: vault.amount}(""); //TODO: use SEP206
+		safeTransfer(msg.sender, vault.amount);
 	}
 
 	// @dev change the amount of BCH locked in the `sn` vault to `newAmount`
@@ -293,7 +304,7 @@ contract XHedge is ERC721 {
 		require(newAmount > minAmount && newAmount >= GlobalMinimumAmount, "AMT_NOT_ENOUGH");
 		vault.amount = newAmount;
 		saveVault(sn, vault);
-		msg.sender.call{value: diff - fee}(""); //TODO: use SEP206
+		safeTransfer(msg.sender, diff - fee);
 		emit UpdateAmount(sn, newAmount);
 	}
 
