@@ -1,3 +1,5 @@
+const timeMachine = require('ganache-time-traveler');
+
 const XHedge = artifacts.require("XHedge");
 const Oracle = artifacts.require("MockOracle");
 
@@ -16,7 +18,7 @@ contract("XHedge", async (accounts) => {
     const initCollateralRate = _1e18 / 2n; // 0.5
     const minCollateralRate  = _1e18 / 5n; // 0.2
     const closeoutPenalty    = _1e18 / 100n; // 0.01
-    const matureTime         = Math.floor(Date.now() / 1000 / 60) + 30; // 30m
+    const matureTime         = Math.floor(Date.now() / 1000) + 30 * 60; // 30m
     const validatorToVote    = 1;
     const hedgeValue         = 600n * _1e18;
     const amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
@@ -30,10 +32,17 @@ contract("XHedge", async (accounts) => {
     });
 
     beforeEach(async () => {
+        let snapshot = await timeMachine.takeSnapshot();
+        snapshotId = snapshot['result'];
+
         oracle = await Oracle.new(initOraclePrice, { from: oven });
         xhedge = await XHedge.new({ from: oven });
         hedger = (await web3.eth.accounts.create()).address;
         speculator = (await web3.eth.accounts.create()).address;
+    });
+
+    afterEach(async() => {
+        await timeMachine.revertToSnapshot(snapshotId);
     });
 
     it('createVault', async () => {
@@ -45,17 +54,26 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balance0) - BigInt(balance1), BigInt(gasFee) + amt);
 
         assert.equal(await xhedge.balanceOf(alice), 2);
-        const tokenIds = getTokenIds(result);
-        //console.log(tokenIds);
-        assert.equal(await xhedge.ownerOf(tokenIds[0]), alice);
-        assert.equal(await xhedge.ownerOf(tokenIds[1]), alice);
+        const [leverId, hedgeId, sn] = getTokenIds(result);
+        // console.log(leverId, hedgeId, sn);
+        assert.equal(await xhedge.ownerOf(leverId), alice);
+        assert.equal(await xhedge.ownerOf(hedgeId), alice);
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.initCollateralRate, initCollateralRate);
+        assert.equal(vault.minCollateralRate, minCollateralRate);
+        assert.equal(vault.closeoutPenalty, closeoutPenalty);
+        assert.equal(vault.matureTime, matureTime);
+        assert.equal(vault.validatorToVote, validatorToVote);
+        assert.equal(vault.hedgeValue, hedgeValue);
+        assert.equal(vault.oracle, oracle.address);
+        assert.equal(vault.amount, amt);
     });
 
     it('burn', async () => {
         const result0 = await createVaultWithDefaultArgs();
-        const tokenIds = getTokenIds(result0);
-        const sn = tokenIds[0] >> 1;
-        // console.log(tokenIds, sn);
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        // console.log(leverId, hedgeId, sn);
 
         const balance0 = await web3.eth.getBalance(alice);
         const result1 = await xhedge.burn(sn, { from: alice });
@@ -68,8 +86,7 @@ contract("XHedge", async (accounts) => {
 
     it('closeout', async () => {
         const result0 = await createVaultWithDefaultArgs();
-        const [leverId, hedgeId] = getTokenIds(result0);
-        const sn = leverId >> 1;
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -92,8 +109,7 @@ contract("XHedge", async (accounts) => {
 
     it('liquidate_priceFall_byHedgeOwner', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
-        const [leverId, hedgeId] = getTokenIds(result0);
-        const sn = leverId >> 1;
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -116,8 +132,7 @@ contract("XHedge", async (accounts) => {
 
     it('liquidate_priceRise_byLeverOwner', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
-        const [leverId, hedgeId] = getTokenIds(result0);
-        const sn = leverId >> 1;
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -140,8 +155,7 @@ contract("XHedge", async (accounts) => {
 
     it('changeAmt_increase', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
-        const [leverId, hedgeId] = getTokenIds(result0);
-        const sn = leverId >> 1;
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -157,8 +171,7 @@ contract("XHedge", async (accounts) => {
 
     it('changeAmt_decrease', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
-        const [leverId, hedgeId] = getTokenIds(result0);
-        const sn = leverId >> 1;
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -176,8 +189,7 @@ contract("XHedge", async (accounts) => {
 
     it('changeValidatorToVote', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
-        const [leverId, hedgeId] = getTokenIds(result0);
-        const sn = leverId >> 1;
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -186,7 +198,13 @@ contract("XHedge", async (accounts) => {
     });
 
     it('vote', async () => {
-        // TODO
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        // console.log(leverId, hedgeId, sn);
+
+        await timeMachine.advanceTime(500 * 24 * 3600);
+        await xhedge.vote(sn);
+        // TODO: check more
     });
 
     async function createVaultWithDefaultArgs(args) {
@@ -216,5 +234,6 @@ function getTokenIds(result) {
     return [
         logs[0].args.tokenId.toString(), // LeverNFT
         logs[1].args.tokenId.toString(), // HedgeNFT
+        logs[0].args.tokenId >> 1,       // sn
     ];
 }
