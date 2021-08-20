@@ -137,7 +137,7 @@ contract XHedge is ERC721 {
 		if(isCloseout) {
 			require(block.timestamp < uint(vault.matureTime)*60, "ALREADY_MATURE");
 			uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
-			require(vault.amount <= minAmount, "NOT_ALLOWED");
+			require(vault.amount <= minAmount, "CAN_NOT_CLOSEOUT");
 			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
 		} else {
 			require(block.timestamp >= uint(vault.matureTime)*60, "NOT_MATURE");
@@ -209,9 +209,9 @@ contract XHedge is ERC721 {
 		uint diff = vault.amount - newAmount;
 		uint fee = diff * 5 / 1000; // fee as BCH
 		uint price = PriceOracle(vault.oracle).getPrice();
-		vault.hedgeValue = vault.hedgeValue + uint96(fee*price/*fee as USD*/);
+		vault.hedgeValue = vault.hedgeValue + uint96(fee*price / 10**18/*fee as USD*/);
 		uint minAmount = (10**18 + uint(vault.initCollateralRate)) * uint(vault.hedgeValue) / price;
-		require(newAmount > minAmount && newAmount >= GlobalMinimumAmount);
+		require(newAmount > minAmount && newAmount >= GlobalMinimumAmount, "AMT_NOT_ENOUGH");
 		vault.amount = newAmount;
 		snToVault[sn] = vault;
 		msg.sender.call{value: diff - fee}(""); //TODO: use SEP206

@@ -17,7 +17,7 @@ contract("XHedge", async (accounts) => {
     const minCollateralRate  = _1e18 / 5n; // 0.2
     const closeoutPenalty    = _1e18 / 100n; // 0.01
     const matureTime         = Math.floor(Date.now() / 1000 / 60) + 30; // 30m
-    const validatorToVote    = accounts[9];
+    const validatorToVote    = 1;
     const hedgeValue         = 600n * _1e18;
     const amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
 
@@ -121,7 +121,7 @@ contract("XHedge", async (accounts) => {
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        await oracle.setPrice(600n * _1e18, { from: oven });
+        await oracle.setPrice(800n * _1e18, { from: oven });
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -130,16 +130,48 @@ contract("XHedge", async (accounts) => {
         const balanceOfAlice1 = await web3.eth.getBalance(alice);
         const balanceOfLula1 = await web3.eth.getBalance(lula);
 
-        // console.log(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0));                // 1.0e18
-        // console.log(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee)); // 0.5e18
-        const amtToHedger = hedgeValue / 600n;
+        // console.log(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0));                // 0.75e18
+        // console.log(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee)); // 0.75e18
+        const amtToHedger = hedgeValue / 800n;
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
     });
 
-    it('changeAmt', async () => {
-        // TODO
+    it('changeAmt_increase', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId] = getTokenIds(result0);
+        const sn = leverId >> 1;
+        // console.log(leverId, hedgeId, sn);
+
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+
+        const addedAmt = _1e18 / 10n;  // 0.1e18
+        const newAmt = amt + addedAmt; // 1.6e18
+        const balanceOfAlice0 = await web3.eth.getBalance(alice);
+        const result = await xhedge.changeAmount(sn, newAmt, { from: alice, value: addedAmt.toString() });
+        const balanceOfAlice1 = await web3.eth.getBalance(alice);
+        const gasFee = getGasFee(result, gasPrice);
+        assert.equal(BigInt(balanceOfAlice0) - BigInt(balanceOfAlice1) - BigInt(gasFee), addedAmt);
+    });
+
+    it('changeAmt_decrease', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId] = getTokenIds(result0);
+        const sn = leverId >> 1;
+        // console.log(leverId, hedgeId, sn);
+
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await oracle.setPrice(900n * _1e18, { from: oven });
+
+        const cutAmt = _1e18 / 10n;  // 0.1e18
+        const newAmt = amt - cutAmt; // 1.4e18
+        const balanceOfLula0 = await web3.eth.getBalance(lula);
+        const result = await xhedge.changeAmount(sn, newAmt, { from: lula });
+        const balanceOfLula1 = await web3.eth.getBalance(lula);
+        const gasFee = getGasFee(result, gasPrice);
+        assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), 
+            cutAmt * 995n / 1000n);
     });
 
     it('changeValidatorToVote', async () => {
