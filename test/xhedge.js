@@ -175,7 +175,14 @@ contract("XHedge", async (accounts) => {
     });
 
     it('changeValidatorToVote', async () => {
-        // TODO
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId] = getTokenIds(result0);
+        const sn = leverId >> 1;
+        // console.log(leverId, hedgeId, sn);
+
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await xhedge.changeValidatorToVote(leverId, 123, { from: lula });
+        // TODO: check new validator
     });
 
     it('vote', async () => {

@@ -224,6 +224,7 @@ contract XHedge is ERC721 {
 	// - The vault must exist (not deleted yet)
 	// - The sender must be the LeverNFT's owner
 	function changeValidatorToVote(uint leverNFT, uint newValidator) external {
+		require(leverNFT%2==1, "NOT_LEVER_NFT"); // must be a LeverNFT
 		uint sn = leverNFT>>1;
 		Vault memory vault = snToVault[sn];
 		require(vault.amount != 0);
