@@ -53,7 +53,71 @@ contract XHedge is ERC721 {
 	// @dev Emitted when `sn` vault has voted `incrVotes` to `validator`, making its accumulated votes to be `newAccumulatedVotes`.
 	event Vote(uint indexed sn, uint indexed validator, uint incrVotes, uint newAccumulatedVotes);
 
+	// @dev The address of precompile smart contract for SEP101
+	address constant SEP101Contract = address(bytes20(uint160(0x2712)));
+
 	constructor() ERC721("XHedge", "XH") {}
+
+	function saveVault(uint sn, Vault memory vault) private {
+		snToVault[sn] = vault;
+	}
+
+	function loadVault(uint sn, Vault memory vault) private {
+		vault = snToVault[sn];
+	}
+
+	function deleteVault(uint sn) private {
+		delete snToVault[sn];
+	}
+
+	
+	//function saveVault(uint sn, Vault memory vault) private {
+	//	bytes memory snBz = abi.encode(sn);
+	//	(uint w0, uint w2, uint w3) = (0, 0, 0);
+	//	w0 = uint(vault.lastVoteTime);
+	//	w0 = (w0<<64) | uint(vault.matureTime);
+	//	w0 = (w0<<64) | uint(vault.minCollateralRate);
+	//	w0 = (w0<<64) | uint(vault.initCollateralRate);
+
+	//	w2 = uint(uint160(bytes20(vault.oracle)));
+	//	w2 = (w2<<96) | uint(vault.hedgeValue);
+
+	//	w3 = uint(vault.amount);
+	//	w3 = (w3<<64) | uint(vault.closeoutPenalty);
+	//	bytes memory vaultBz = abi.encode(w0, vault.validatorToVote, w2, w3);
+	//	(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
+	//		abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
+	//	require(success, "SEP101_SET_FAIL");
+	//}
+
+	//function loadVault(uint sn, Vault memory vault) private {
+	//	bytes memory snBz = abi.encode(sn);
+	//	(bool success, bytes memory data) = SEP101Contract.delegatecall(
+	//		abi.encodeWithSignature("get(bytes)", snBz));
+
+	//	(uint w0, uint w1, uint w2, uint w3) = abi.decode(data, (uint, uint, uint, uint));
+
+	//	vault.initCollateralRate = uint64(w0);
+	//	vault.minCollateralRate = uint64(w0>>64);
+	//	vault.matureTime = uint64(w0>>128);
+	//	vault.lastVoteTime = uint64(w0>>196);
+
+	//	vault.validatorToVote = w1;
+
+	//	vault.hedgeValue = uint96(w2);
+	//	vault.oracle = address(bytes20(uint160(w2>>96)));
+
+	//	vault.closeoutPenalty = uint64(w3);
+	//	vault.amount = uint96(w3>>64);
+	//}
+
+	//function deleteVault(uint sn) private {
+	//	bytes memory snBz = abi.encode(sn);
+	//	bytes memory vaultBz = abi.encode(uint(0)); //writing 32 bytes of zero is for deletion
+	//	(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
+	//		abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
+	//	require(success, "SEP101_DEL_FAIL");
+	//}
 
 	// @dev Create a vault which locks some BCH, and mint a pair of LeverNFT/HedgeNFT
 	// The id of LeverNFT (HedgeNFT) is `sn*2+1` (`sn*2`), respectively, where `sn` is the serial number of the vault.
@@ -101,7 +165,7 @@ contract XHedge is ERC721 {
 		sn = (sn<<8)+(idx<<1);
 		_safeMint(msg.sender, (sn<<1)+1); //the LeverNFT
 		_safeMint(msg.sender, sn<<1); //the HedgeNFT
-		snToVault[sn] = vault;
+		saveVault(sn, vault);
 	}
 
 	// @dev A "packed" version for createVault, to save space of calldata
@@ -143,7 +207,8 @@ contract XHedge is ERC721 {
 	function _liquidate(uint token, bool isCloseout) internal {
 		require(ownerOf(token) == msg.sender, "NOT_OWNER");
 		uint sn = token>>1;
-		Vault memory vault = snToVault[sn];
+		Vault memory vault;
+		loadVault(sn, vault);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint price = PriceOracle(vault.oracle).getPrice();
 		if(isCloseout) {
@@ -167,7 +232,7 @@ contract XHedge is ERC721 {
 		address leverOwner = ownerOf(leverNFT);
 		_burn(hedgeNFT);
 		_burn(leverNFT);
-		delete snToVault[sn];
+		deleteVault(sn);
 		hedgeOwner.call{value: amountToHedgeOwner}(""); //TODO: use SEP206
 		leverOwner.call{value: vault.amount - amountToHedgeOwner}(""); //TODO: use SEP206
 	}
@@ -179,14 +244,15 @@ contract XHedge is ERC721 {
 	// - The vault must exist (not deleted yet)
 	// - The sender must own both the LeverNFT and the HedgeNFT
 	function burn(uint sn) external {
-		Vault memory vault = snToVault[sn];
+		Vault memory vault;
+		loadVault(sn, vault);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
 		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		_burn(hedgeNFT);
 		_burn(leverNFT);
-		delete snToVault[sn];
+		deleteVault(sn);
 		msg.sender.call{value: vault.amount}(""); //TODO: use SEP206
 	}
 
@@ -203,13 +269,14 @@ contract XHedge is ERC721 {
 	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dusting attack
 	// - The new amount of locked BCH must meet the initial collateral rate requirement
 	function changeAmount(uint sn, uint96 newAmount) external payable {
-		Vault memory vault = snToVault[sn];
+		Vault memory vault;
+		loadVault(sn, vault);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint leverNFT = (sn<<1)+1;
 		if(newAmount > vault.amount) {
 			require(msg.value == newAmount - vault.amount, "BAD_MSG_VAL");
 			vault.amount = newAmount;
-			snToVault[sn] = vault;
+			saveVault(sn, vault);
 			emit UpdateAmount(sn, newAmount);
 			return;
 		}
@@ -225,7 +292,7 @@ contract XHedge is ERC721 {
 		uint minAmount = (10**18 + uint(vault.initCollateralRate)) * uint(vault.hedgeValue) / price;
 		require(newAmount > minAmount && newAmount >= GlobalMinimumAmount, "AMT_NOT_ENOUGH");
 		vault.amount = newAmount;
-		snToVault[sn] = vault;
+		saveVault(sn, vault);
 		msg.sender.call{value: diff - fee}(""); //TODO: use SEP206
 		emit UpdateAmount(sn, newAmount);
 	}
@@ -238,11 +305,12 @@ contract XHedge is ERC721 {
 	function changeValidatorToVote(uint leverNFT, uint newValidator) external {
 		require(leverNFT%2==1, "NOT_LEVER_NFT"); // must be a LeverNFT
 		uint sn = leverNFT>>1;
-		Vault memory vault = snToVault[sn];
+		Vault memory vault;
+		loadVault(sn, vault);
 		require(vault.amount != 0);
 		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		vault.validatorToVote = newValidator;
-		snToVault[sn] = vault;
+		saveVault(sn, vault);
 		emit UpdateValidatorToVote(sn, newValidator);
 	}
 
@@ -252,10 +320,11 @@ contract XHedge is ERC721 {
 	//
 	// - The vault must exist (not deleted yet)
 	function vote(uint sn) external {
-		Vault memory vault = snToVault[sn];
+		Vault memory vault;
+		loadVault(sn, vault);
 		require(vault.amount != 0);
 		_vote(vault, sn);
-		snToVault[sn] = vault;
+		saveVault(sn, vault);
 	}
 
 	function _vote(Vault memory vault, uint sn) internal {
