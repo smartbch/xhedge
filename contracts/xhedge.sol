@@ -222,10 +222,10 @@ contract XHedge is ERC721 {
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint price = PriceOracle(vault.oracle).getPrice();
 		if(isCloseout) {
+			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
 			require(block.timestamp < uint(vault.matureTime), "ALREADY_MATURE");
 			uint minAmount = (10**18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
-			require(vault.amount <= minAmount, "CAN_NOT_CLOSEOUT");
-			require(token%2==0, "NOT_HEDGE_NFT"); // a HedgeNFT
+			require(vault.amount <= minAmount, "PRICE_TOO_HIGH");
 		} else {
 			require(block.timestamp >= uint(vault.matureTime), "NOT_MATURE");
 		}
@@ -258,7 +258,7 @@ contract XHedge is ERC721 {
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
-		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_OWNER");
+		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_WHOLE_OWNER");
 		_burn(hedgeNFT);
 		_burn(leverNFT);
 		deleteVault(sn);

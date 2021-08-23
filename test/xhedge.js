@@ -71,10 +71,19 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.amount, amt);
     });
 
-    it('createVault_valueNotEnough', async () => {
+    it('createVault_msgValNotEnough', async () => {
         await truffleAssert.reverts(
             createVaultWithDefaultArgs({amt: amt - 100n}),
             "NOT_ENOUGH_PAID"
+        );
+    });
+
+    it('createVault_lockedAmtTooSmall', async () => {
+        const hedgeValue = 600n * _1e18 / (100000n);
+        const amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e13
+        await truffleAssert.reverts(
+            createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt}),
+            "LOCKED_AMOUNT_TOO_SMALL"
         );
     });
 
@@ -90,6 +99,23 @@ contract("XHedge", async (accounts) => {
         const gasFee = getGasFee(result1, gasPrice);
         assert.equal(BigInt(balance1) - BigInt(balance0), amt - BigInt(gasFee));
         assert.equal(await xhedge.balanceOf(alice), 0);
+    });
+
+    it('burn_badSN', async () => {
+        await truffleAssert.reverts(
+            xhedge.burn(123456789), "VAULT_NOT_FOUND"
+        );
+    });
+    it('burn_notWholeOwner', async () => {
+        const result0 = await createVaultWithDefaultArgs();
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await truffleAssert.reverts(
+            xhedge.burn(sn, { from: alice }), "NOT_WHOLE_OWNER"
+        );
+        await truffleAssert.reverts(
+            xhedge.burn(sn, { from: lula }), "NOT_WHOLE_OWNER"
+        );
     });
 
     it('closeout', async () => {
@@ -113,6 +139,35 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0) + BigInt(gasFee), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
+    });
+
+    it('closeout_notOwner', async () => {
+        const result0 = await createVaultWithDefaultArgs();
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.closeout(hedgeId, { from: lula }), "NOT_OWNER"
+        );
+    });
+    it('closeout_notHedge', async () => {
+        const result0 = await createVaultWithDefaultArgs();
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.closeout(leverId, { from: alice }), "NOT_HEDGE_NFT"
+        );
+    });
+    it('closeout_alreadyMature', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.closeout(hedgeId, { from: alice }), "ALREADY_MATURE"
+        );
+    });
+    it('closeout_priceTooHigh', async () => {
+        const result0 = await createVaultWithDefaultArgs();
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.closeout(hedgeId, { from: alice }), "PRICE_TOO_HIGH"
+        );
     });
 
     it('liquidate_priceFall_byHedgeOwner', async () => {
@@ -159,6 +214,17 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
+    });
+
+    it('liquidate_notMature', async () => {
+        const result0 = await createVaultWithDefaultArgs();
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.liquidate(leverId, { from: alice }), "NOT_MATURE"
+        );
+        await truffleAssert.reverts(
+            xhedge.liquidate(hedgeId, { from: alice }), "NOT_MATURE"
+        );
     });
 
     it('changeAmt_increase', async () => {
