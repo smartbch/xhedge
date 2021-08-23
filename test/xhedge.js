@@ -233,15 +233,20 @@ contract("XHedge", async (accounts) => {
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await timeMachine.advanceTime(500 * 24 * 3600);
 
         const addedAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt + addedAmt; // 1.6e18
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
-        const result = await xhedge.changeAmount(sn, newAmt, { from: alice, value: addedAmt.toString() });
+        const result1 = await xhedge.changeAmount(sn, newAmt, { from: alice, value: addedAmt.toString() });
         const balanceOfAlice1 = await web3.eth.getBalance(alice);
-        const gasFee = getGasFee(result, gasPrice);
+        const gasFee = getGasFee(result1, gasPrice);
         assert.equal(BigInt(balanceOfAlice0) - BigInt(balanceOfAlice1) - BigInt(gasFee), addedAmt);
     
+        const event = getUpdateAmountEvent(result1);
+        assert.equal(event.sn, sn);
+        assert.equal(event.newAmount, newAmt);
+
         const vault = await xhedge.snToVault(sn);
         assert.equal(vault.amount, newAmt);
     });
@@ -253,15 +258,20 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(900n * _1e18, { from: oven });
+        await timeMachine.advanceTime(500 * 24 * 3600);
 
         const cutAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt - cutAmt; // 1.4e18
         const balanceOfLula0 = await web3.eth.getBalance(lula);
-        const result = await xhedge.changeAmount(sn, newAmt, { from: lula });
+        const result1 = await xhedge.changeAmount(sn, newAmt, { from: lula });
         const balanceOfLula1 = await web3.eth.getBalance(lula);
-        const gasFee = getGasFee(result, gasPrice);
+        const gasFee = getGasFee(result1, gasPrice);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), 
             cutAmt * 995n / 1000n);
+
+        const event = getUpdateAmountEvent(result1);
+        assert.equal(event.sn, sn);
+        assert.equal(event.newAmount, newAmt);
 
         const vault = await xhedge.snToVault(sn);
         assert.equal(vault.amount, newAmt);
@@ -288,6 +298,7 @@ contract("XHedge", async (accounts) => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await timeMachine.advanceTime(500 * 24 * 3600);
         await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt - 100n, { from: alice, value: 101 }),
             "NOT_OWNER"
@@ -298,6 +309,7 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await timeMachine.advanceTime(500 * 24 * 3600);
 
         const cutAmt = _1e18 / 2n;   // 0.5e18
         const newAmt = amt - cutAmt; // 1.0e18
@@ -313,7 +325,10 @@ contract("XHedge", async (accounts) => {
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        await xhedge.changeValidatorToVote(leverId, 123, { from: lula });
+        const result1 = await xhedge.changeValidatorToVote(leverId, 123, { from: lula });
+        const event = getUpdateValidatorToVoteEvent(result1);
+        assert.equal(event.sn, sn);
+        assert.equal(event.newValidator, 123);
 
         const vault = await xhedge.snToVault(sn);
         assert.equal(vault.validatorToVote, 123);
@@ -343,15 +358,22 @@ contract("XHedge", async (accounts) => {
 
         const voteTime0 = (await xhedge.snToVault(sn)).lastVoteTime;
         await timeMachine.advanceTime(500 * 24 * 3600);
-        await xhedge.vote(sn);
+        const result1 = await xhedge.vote(sn);
         const voteTime1 = (await xhedge.snToVault(sn)).lastVoteTime;
-        assert.equal(await xhedge.valToVotes(1), 
-            (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt);
+        const newVotes = (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt;
+        assert.equal(await xhedge.valToVotes(validatorToVote), newVotes);
+
+        const event = getVoteEvent(result1);
+        assert.equal(event.sn, sn);
+        assert.equal(event.validator, validatorToVote);
+        assert.equal(event.incrVotes, newVotes);
+        assert.equal(event.newAccumulatedVotes, newVotes);
     });
 
     it('vote_minVotes', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await timeMachine.advanceTime(100);
         await truffleAssert.reverts(
             xhedge.vote(sn), "NOT_ENOUGH_VOTES_FOR_NEW_VAL"
         );
@@ -388,4 +410,31 @@ function getTokenIds(result) {
         logs[1].args.tokenId.toString(), // HedgeNFT
         logs[0].args.tokenId >> 1,       // sn
     ];
+}
+
+function getUpdateValidatorToVoteEvent(result) {
+    const log = result.logs.find(log => log.event == 'UpdateValidatorToVote');
+    assert.isNotNull(log);
+    return {
+        sn          : log.args.sn,
+        newValidator: log.args.newValidator,
+    };
+}
+function getUpdateAmountEvent(result) {
+    const log = result.logs.find(log => log.event == 'UpdateAmount');
+    assert.isNotNull(log);
+    return {
+        sn       : log.args.sn,
+        newAmount: log.args.newAmount,
+    };
+}
+function getVoteEvent(result) {
+    const log = result.logs.find(log => log.event == 'Vote');
+    assert.isNotNull(log);
+    return {
+        sn                 : log.args.sn,
+        validator          : log.args.validator,
+        incrVotes          : log.args.incrVotes,
+        newAccumulatedVotes: log.args.newAccumulatedVotes,
+    };
 }
