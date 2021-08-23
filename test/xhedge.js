@@ -241,6 +241,9 @@ contract("XHedge", async (accounts) => {
         const balanceOfAlice1 = await web3.eth.getBalance(alice);
         const gasFee = getGasFee(result, gasPrice);
         assert.equal(BigInt(balanceOfAlice0) - BigInt(balanceOfAlice1) - BigInt(gasFee), addedAmt);
+    
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.amount, newAmt);
     });
 
     it('changeAmt_decrease', async () => {
@@ -259,6 +262,49 @@ contract("XHedge", async (accounts) => {
         const gasFee = getGasFee(result, gasPrice);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), 
             cutAmt * 995n / 1000n);
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.amount, newAmt);
+    });
+
+    it('changeAmt_badSN', async () => {
+        await truffleAssert.reverts(
+            xhedge.changeAmount(123456789, 100, { from: alice }), "VAULT_NOT_FOUND"
+        );
+    });
+    it('changeAmt_increase_badMsgVal', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.changeAmount(sn, amt + 100n, { from: alice, value: 99 }),
+            "BAD_MSG_VAL"
+        );
+        await truffleAssert.reverts(
+            xhedge.changeAmount(sn, amt + 100n, { from: alice, value: 101 }),
+            "BAD_MSG_VAL"
+        );
+    });
+    it('changeAmt_decrease_notLeverOwner', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+        await truffleAssert.reverts(
+            xhedge.changeAmount(sn, amt - 100n, { from: alice, value: 101 }),
+            "NOT_OWNER"
+        );
+    });
+    it('changeAmt_decrease_amtNotEnough', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+
+        await xhedge.transferFrom(alice, lula, leverId, { from: alice });
+
+        const cutAmt = _1e18 / 2n;   // 0.5e18
+        const newAmt = amt - cutAmt; // 1.0e18
+        await truffleAssert.reverts(
+            xhedge.changeAmount(sn, newAmt, { from: lula }),
+            "AMT_NOT_ENOUGH"
+        );
     });
 
     it('changeValidatorToVote', async () => {
@@ -268,7 +314,26 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await xhedge.changeValidatorToVote(leverId, 123, { from: lula });
-        // TODO: check new validator
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.validatorToVote, 123);
+    });
+
+    it('changeValidatorToVote_notLeverNFT', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.changeValidatorToVote(hedgeId, 123, { from: alice }),
+            "NOT_LEVER_NFT"
+        );
+    });
+    it('changeValidatorToVote_notOwner', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.changeValidatorToVote(leverId, 123, { from: lula }),
+            "NOT_OWNER"
+        );
     });
 
     it('vote', async () => {
@@ -276,9 +341,20 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
+        const voteTime0 = (await xhedge.snToVault(sn)).lastVoteTime;
         await timeMachine.advanceTime(500 * 24 * 3600);
         await xhedge.vote(sn);
-        // TODO: check more
+        const voteTime1 = (await xhedge.snToVault(sn)).lastVoteTime;
+        assert.equal(await xhedge.valToVotes(1), 
+            (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt);
+    });
+
+    it('vote_minVotes', async () => {
+        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        await truffleAssert.reverts(
+            xhedge.vote(sn), "NOT_ENOUGH_VOTES_FOR_NEW_VAL"
+        );
     });
 
     async function createVaultWithDefaultArgs(args) {
