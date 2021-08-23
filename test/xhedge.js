@@ -1,4 +1,5 @@
 const timeMachine = require('ganache-time-traveler');
+const truffleAssert = require('truffle-assertions');
 
 const XHedge = artifacts.require("XHedge");
 const Oracle = artifacts.require("MockOracle");
@@ -68,6 +69,13 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.hedgeValue, hedgeValue);
         assert.equal(vault.oracle, oracle.address);
         assert.equal(vault.amount, amt);
+    });
+
+    it('createVault_valueNotEnough', async () => {
+        await truffleAssert.reverts(
+            createVaultWithDefaultArgs({amt: amt - 100n}),
+            "NOT_ENOUGH_PAID"
+        );
     });
 
     it('burn', async () => {
@@ -209,6 +217,8 @@ contract("XHedge", async (accounts) => {
 
     async function createVaultWithDefaultArgs(args) {
         let _matureTime = args && args.matureTime || matureTime;
+        let _hedgeValue = args && args.hedgeValue || hedgeValue;
+        let _amt = args && args.amt || amt;
 
         return await xhedge.createVault(
             initCollateralRate.toString(),
@@ -216,9 +226,9 @@ contract("XHedge", async (accounts) => {
             closeoutPenalty.toString(),
             _matureTime,
             validatorToVote,
-            hedgeValue.toString(),
+            _hedgeValue.toString(),
             oracle.address,
-            { from: alice, value: amt.toString() }
+            { from: alice, value: _amt.toString() }
         );
     }
 

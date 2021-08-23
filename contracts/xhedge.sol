@@ -66,7 +66,7 @@ contract XHedge is ERC721 {
 		snToVault[sn] = vault;
 	}
 
-	function loadVault(uint sn, Vault memory vault) private {
+	function loadVault(uint sn) private view returns (Vault memory vault) {
 		vault = snToVault[sn];
 	}
 
@@ -97,7 +97,7 @@ contract XHedge is ERC721 {
 	//	require(success, "SEP101_SET_FAIL");
 	//}
 
-	//function loadVault(uint sn, Vault memory vault) private {
+	//function loadVault(uint sn) private returns (Vault memory vault) {
 	//	bytes memory snBz = abi.encode(sn);
 	//	(bool success, bytes memory data) = SEP101Contract.delegatecall(
 	//		abi.encodeWithSignature("get(bytes)", snBz));
@@ -218,8 +218,7 @@ contract XHedge is ERC721 {
 	function _liquidate(uint token, bool isCloseout) internal {
 		require(ownerOf(token) == msg.sender, "NOT_OWNER");
 		uint sn = token>>1;
-		Vault memory vault;
-		loadVault(sn, vault);
+		Vault memory vault = loadVault(sn);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint price = PriceOracle(vault.oracle).getPrice();
 		if(isCloseout) {
@@ -255,8 +254,7 @@ contract XHedge is ERC721 {
 	// - The vault must exist (not deleted yet)
 	// - The sender must own both the LeverNFT and the HedgeNFT
 	function burn(uint sn) external {
-		Vault memory vault;
-		loadVault(sn, vault);
+		Vault memory vault = loadVault(sn);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
@@ -280,8 +278,7 @@ contract XHedge is ERC721 {
 	// - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dusting attack
 	// - The new amount of locked BCH must meet the initial collateral rate requirement
 	function changeAmount(uint sn, uint96 newAmount) external payable {
-		Vault memory vault;
-		loadVault(sn, vault);
+		Vault memory vault = loadVault(sn);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint leverNFT = (sn<<1)+1;
 		if(newAmount > vault.amount) {
@@ -316,9 +313,8 @@ contract XHedge is ERC721 {
 	function changeValidatorToVote(uint leverNFT, uint newValidator) external {
 		require(leverNFT%2==1, "NOT_LEVER_NFT"); // must be a LeverNFT
 		uint sn = leverNFT>>1;
-		Vault memory vault;
-		loadVault(sn, vault);
-		require(vault.amount != 0);
+		Vault memory vault = loadVault(sn);
+		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		vault.validatorToVote = newValidator;
 		saveVault(sn, vault);
@@ -331,9 +327,8 @@ contract XHedge is ERC721 {
 	//
 	// - The vault must exist (not deleted yet)
 	function vote(uint sn) external {
-		Vault memory vault;
-		loadVault(sn, vault);
-		require(vault.amount != 0);
+		Vault memory vault = loadVault(sn);
+		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		_vote(vault, sn);
 		saveVault(sn, vault);
 	}
