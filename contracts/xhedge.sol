@@ -102,7 +102,8 @@ contract XHedge is ERC721 {
 	//	(bool success, bytes memory data) = SEP101Contract.delegatecall(
 	//		abi.encodeWithSignature("get(bytes)", snBz));
 
-	//	(uint w0, uint w1, uint w2, uint w3) = abi.decode(data, (uint, uint, uint, uint));
+	//	bytes memory vaultBz = abi.decode(data, (bytes));
+	//	(uint w0, uint w1, uint w2, uint w3) = abi.decode(vaultBz, (uint, uint, uint, uint));	
 
 	//	vault.initCollateralRate = uint64(w0);
 	//	vault.minCollateralRate = uint64(w0>>64);
