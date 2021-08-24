@@ -38,8 +38,6 @@ contract("XHedge", async (accounts) => {
 
         oracle = await Oracle.new(initOraclePrice, { from: oven });
         xhedge = await XHedge.new({ from: oven });
-        hedger = (await web3.eth.accounts.create()).address;
-        speculator = (await web3.eth.accounts.create()).address;
     });
 
     afterEach(async() => {
