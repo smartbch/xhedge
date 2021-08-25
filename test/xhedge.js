@@ -88,6 +88,11 @@ contract("XHedge", async (accounts) => {
         );
     });
 
+    it('snToVault_badSN', async () => {
+        const vault = await xhedge.snToVault(123456789);
+        assert.equal(vault.amount, 0);
+    });
+
     it('burn', async () => {
         const result0 = await createVaultWithDefaultArgs();
         const [leverId, hedgeId, sn] = getTokenIds(result0);
