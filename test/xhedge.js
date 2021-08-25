@@ -67,6 +67,9 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.hedgeValue, hedgeValue);
         assert.equal(vault.oracle, oracle.address);
         assert.equal(vault.amount, amt);
+
+        const blk = await web3.eth.getBlock(result.receipt.blockNumber);   
+        assert.equal(vault.lastVoteTime, blk.timestamp);
     });
 
     it('createVault_msgValNotEnough', async () => {
