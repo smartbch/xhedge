@@ -100,6 +100,9 @@ contract("XHedge", async (accounts) => {
         const gasFee = getGasFee(result1, gasPrice);
         assert.equal(BigInt(balance1) - BigInt(balance0), amt - BigInt(gasFee));
         assert.equal(await xhedge.balanceOf(alice), 0);
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.amount, 0);
     });
 
     it('burn_badSN', async () => {
@@ -140,6 +143,9 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0) + BigInt(gasFee), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.amount, 0);
     });
 
     it('closeout_notOwner', async () => {
@@ -192,6 +198,9 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0) + BigInt(gasFee), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.amount, 0);
     });
 
     it('liquidate_priceRise_byLeverOwner', async () => {
@@ -215,6 +224,9 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfAlice1) - BigInt(balanceOfAlice0), amtToHedger);
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
+
+        const vault = await xhedge.snToVault(sn);
+        assert.equal(vault.amount, 0);
     });
 
     it('liquidate_notMature', async () => {
