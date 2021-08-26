@@ -39,12 +39,6 @@ contract XHedge is ERC721 {
 	// be cleared by the underlying golang logic in staking contract
 	uint[] public validators;
 
-	// To prevent dusting attack, we need to set a lower bound for how much BCH a vault locks
-	uint constant GlobalMinimumAmount = 10**14; //0.0001 BCH
-
-	// To prevent dusting attack, we need to set a lower bound for coin-days when voting for a new validator
-	uint constant MinimumVotes = 500 * 10**18 * 24 * 3600; // 500 coin-days
-
 	// @dev Emitted when `sn` vault has updated its supported validator to `newValidator`.
 	event UpdateValidatorToVote(uint indexed sn, uint indexed newValidator);
 
@@ -53,6 +47,12 @@ contract XHedge is ERC721 {
 
 	// @dev Emitted when `sn` vault has voted `incrVotes` to `validator`, making its accumulated votes to be `newAccumulatedVotes`.
 	event Vote(uint indexed sn, uint indexed validator, uint incrVotes, uint newAccumulatedVotes);
+
+	// To prevent dusting attack, we need to set a lower bound for how much BCH a vault locks
+	uint constant GlobalMinimumAmount = 10**14; //0.0001 BCH
+
+	// To prevent dusting attack, we need to set a lower bound for coin-days when voting for a new validator
+	uint constant MinimumVotes = 500 * 10**18 * 24 * 3600; // 500 coin-days
 
 	// @dev The address of precompile smart contract for SEP101
 	address constant SEP101Contract = address(bytes20(uint160(0x2712)));
