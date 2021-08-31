@@ -72,6 +72,19 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.lastVoteTime, blk.timestamp);
     });
 
+    it('createVault_returnOverpaid', async () => {
+        const balance0 = await web3.eth.getBalance(alice);
+        const result = await createVaultWithDefaultArgs({amt: amt + _1e18});
+        const balance1 = await web3.eth.getBalance(alice);
+
+        const gasFee = getGasFee(result, gasPrice);
+        assert.equal(BigInt(balance0) - BigInt(balance1), BigInt(gasFee) + amt);
+
+        const [leverId, hedgeId, sn] = getTokenIds(result);
+        const vault = await xhedge.loadVault(sn);
+        assert.equal(vault.amount, amt);
+    });
+
     it('createVault_msgValNotEnough', async () => {
         await truffleAssert.reverts(
             createVaultWithDefaultArgs({amt: amt - 100n}),
