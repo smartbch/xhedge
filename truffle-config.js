@@ -52,6 +52,12 @@ module.exports = {
             port: 7545,            // Standard Ethereum port (default: none)
             network_id: "*",       // Any network (default: none)
         },
+        testing_sbch: {
+            host: "127.0.0.1",
+            port: 8545,
+            network_id: "10001",
+            gasPrice: 10000000000,
+        },
 
         // Another network with more advanced options...
         // advanced: {
