@@ -23,8 +23,8 @@ struct Vault {
 // @dev XHedge splits BCH into a pair of LeverNFT and HedgeNFT. When this pair of NFTs get burnt, the BCH
 // are liquidated to the owners of them.
 // The LeverNFT's owner can also vote for a validator on smartBCH.
-contract XHedge is ERC721 {
-	mapping (uint => Vault) public snToVault;
+abstract contract XHedgeBase is ERC721 {
+	// mapping (uint => Vault) public snToVault;
 
 	// This is an array of counters for calculating a new NFT's id.
 	// we use 128 counters to avoid inter-dependency between the transactions calling createVault
@@ -49,7 +49,7 @@ contract XHedge is ERC721 {
 	event Vote(uint indexed sn, uint indexed validator, uint incrVotes, uint newAccumulatedVotes);
 
 	// To prevent dusting attack, we need to set a lower bound for how much BCH a vault locks
-	uint constant GlobalMinimumAmount = 10**14; //0.0001 BCH
+	uint constant GlobalMinimumAmount = 10**13; //0.00001 BCH
 
 	// To prevent dusting attack, we need to set a lower bound for coin-days when voting for a new validator
 	uint constant MinimumVotes = 500 * 10**18 * 24 * 3600; // 500 coin-days
@@ -62,74 +62,11 @@ contract XHedge is ERC721 {
 
 	constructor() ERC721("XHedge", "XH") {}
 
-	function saveVault(uint sn, Vault memory vault) private {
-		snToVault[sn] = vault;
-	}
-
-	function loadVault(uint sn) private view returns (Vault memory vault) {
-		vault = snToVault[sn];
-	}
-
-	function deleteVault(uint sn) private {
-		delete snToVault[sn];
-	}
-
-	function safeTransfer(address receiver, uint value) private {
-		receiver.call{value: value, gas: 9000}("");
-	}
-
-	//function saveVault(uint sn, Vault memory vault) private {
-	//	bytes memory snBz = abi.encode(sn);
-	//	(uint w0, uint w2, uint w3) = (0, 0, 0);
-	//	w0 = uint(vault.lastVoteTime);
-	//	w0 = (w0<<64) | uint(vault.matureTime);
-	//	w0 = (w0<<64) | uint(vault.minCollateralRate);
-	//	w0 = (w0<<64) | uint(vault.initCollateralRate);
-
-	//	w2 = uint(uint160(bytes20(vault.oracle)));
-	//	w2 = (w2<<96) | uint(vault.hedgeValue);
-
-	//	w3 = uint(vault.amount);
-	//	w3 = (w3<<64) | uint(vault.closeoutPenalty);
-	//	bytes memory vaultBz = abi.encode(w0, vault.validatorToVote, w2, w3);
-	//	(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
-	//		abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
-	//	require(success, "SEP101_SET_FAIL");
-	//}
-
-	//function loadVault(uint sn) private returns (Vault memory vault) {
-	//	bytes memory snBz = abi.encode(sn);
-	//	(bool success, bytes memory data) = SEP101Contract.delegatecall(
-	//		abi.encodeWithSignature("get(bytes)", snBz));
-
-	//	bytes memory vaultBz = abi.decode(data, (bytes));
-	//	(uint w0, uint w1, uint w2, uint w3) = abi.decode(vaultBz, (uint, uint, uint, uint));	
-
-	//	vault.initCollateralRate = uint64(w0);
-	//	vault.minCollateralRate = uint64(w0>>64);
-	//	vault.matureTime = uint64(w0>>128);
-	//	vault.lastVoteTime = uint64(w0>>196);
-
-	//	vault.validatorToVote = w1;
-
-	//	vault.hedgeValue = uint96(w2);
-	//	vault.oracle = address(bytes20(uint160(w2>>96)));
-
-	//	vault.closeoutPenalty = uint64(w3);
-	//	vault.amount = uint96(w3>>64);
-	//}
-
-	//function deleteVault(uint sn) private {
-	//	bytes memory snBz = abi.encode(sn);
-	//	bytes memory vaultBz = abi.encode(uint(0)); //writing 32 bytes of zero is for deletion
-	//	(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
-	//		abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
-	//	require(success, "SEP101_DEL_FAIL");
-	//}
-
-	//function safeTransfer(address receiver, uint value) private {
-	//	IERC20(SEP206Contract).transfer(receiver, value);
-	//}
+	// virtual methods implemented by sub-contract
+	function saveVault(uint sn, Vault memory vault) internal virtual;
+	function loadVault(uint sn) internal virtual returns (Vault memory vault);
+	function deleteVault(uint sn) internal virtual;
+	function safeTransfer(address receiver, uint value) internal virtual;
 
 	// @dev Create a vault which locks some BCH, and mint a pair of LeverNFT/HedgeNFT
 	// The id of LeverNFT (HedgeNFT) is `sn*2+1` (`sn*2`), respectively, where `sn` is the serial number of the vault.
@@ -230,6 +167,9 @@ contract XHedge is ERC721 {
 		} else {
 			require(block.timestamp >= uint(vault.matureTime), "NOT_MATURE");
 		}
+
+		_vote(vault, sn); // clear the remained coin-days
+
 		uint amountToHedgeOwner = uint(vault.hedgeValue) * 10**18 / price;
 		if(isCloseout) {
 			amountToHedgeOwner = amountToHedgeOwner * (10**18 + vault.closeoutPenalty) / 10**18;
@@ -260,6 +200,7 @@ contract XHedge is ERC721 {
 		uint hedgeNFT =  sn<<1;
 		uint leverNFT = hedgeNFT + 1;
 		require(msg.sender == ownerOf(hedgeNFT) && msg.sender == ownerOf(leverNFT), "NOT_WHOLE_OWNER");
+		_vote(vault, sn); // clear the remained coin-days
 		_burn(hedgeNFT);
 		_burn(leverNFT);
 		deleteVault(sn);
@@ -282,6 +223,10 @@ contract XHedge is ERC721 {
 		Vault memory vault = loadVault(sn);
 		require(vault.amount != 0, "VAULT_NOT_FOUND");
 		uint leverNFT = (sn<<1)+1;
+
+		// because the amount will be changed, we vote here
+		_vote(vault, sn);
+
 		if(newAmount > vault.amount) {
 			require(msg.value == newAmount - vault.amount, "BAD_MSG_VAL");
 			vault.amount = newAmount;
@@ -290,12 +235,10 @@ contract XHedge is ERC721 {
 			return;
 		}
 
-		// because the amount will be changed, we vote here
-		_vote(vault, sn);
-
 		require(msg.sender == ownerOf(leverNFT), "NOT_OWNER");
 		uint diff = vault.amount - newAmount;
 		uint fee = diff * 5 / 1000; // fee as BCH
+		newAmount = newAmount + uint96(fee);
 		uint price = PriceOracle(vault.oracle).getPrice();
 		vault.hedgeValue = vault.hedgeValue + uint96(fee*price / 10**18/*fee as USD*/);
 		uint minAmount = (10**18 + uint(vault.initCollateralRate)) * uint(vault.hedgeValue) / price;
@@ -349,4 +292,99 @@ contract XHedge is ERC721 {
 		}
 		vault.lastVoteTime = uint32(block.timestamp);
 	}
+}
+
+contract XHedge is XHedgeBase {
+
+	mapping (uint => Vault) public snToVault;
+
+	function saveVault(uint sn, Vault memory vault) internal override {
+		snToVault[sn] = vault;
+	}
+
+	function loadVault(uint sn) internal override view returns (Vault memory vault) {
+		vault = snToVault[sn];
+	}
+
+	function deleteVault(uint sn) internal override {
+		delete snToVault[sn];
+	}
+
+	function safeTransfer(address receiver, uint value) internal override {
+		receiver.call{value: value, gas: 9000}("");
+	}
+
+}
+
+contract XHedgeForSmartBCH is XHedgeBase {
+
+	function snToVault(uint sn) public returns (Vault memory vault) {
+		vault = loadVault(sn);
+	}
+
+	function saveVault(uint sn, Vault memory vault) internal override {
+		bytes memory snBz = abi.encode(sn);
+		(uint w0, uint w2, uint w3) = (0, 0, 0);
+		w0 = uint(vault.lastVoteTime);
+		w0 = (w0<<64) | uint(vault.matureTime);
+		w0 = (w0<<64) | uint(vault.minCollateralRate);
+		w0 = (w0<<64) | uint(vault.initCollateralRate);
+
+		w2 = uint(uint160(bytes20(vault.oracle)));
+		w2 = (w2<<96) | uint(vault.hedgeValue);
+
+		w3 = uint(vault.amount);
+		w3 = (w3<<64) | uint(vault.closeoutPenalty);
+		bytes memory vaultBz = abi.encode(w0, vault.validatorToVote, w2, w3);
+		(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
+			abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
+		require(success, "SEP101_SET_FAIL");
+	}
+
+	function loadVault(uint sn) internal override returns (Vault memory vault) {
+		bytes memory snBz = abi.encode(sn);
+		(bool success, bytes memory data) = SEP101Contract.delegatecall(
+			abi.encodeWithSignature("get(bytes)", snBz));
+
+		require(success && (data.length == 32*2 || data.length == 32*6));
+		if (data.length == 32*2) {
+			vault.amount = 0;
+			return vault;
+		}
+
+		// bytes memory vaultBz = abi.decode(data, (bytes));
+		bytes memory vaultBz;
+		assembly { vaultBz := add(data, 64) }
+
+		(uint w0, uint w1, uint w2, uint w3) = abi.decode(vaultBz, (uint, uint, uint, uint));
+
+		vault.initCollateralRate = uint64(w0);
+		vault.minCollateralRate = uint64(w0>>64);
+		vault.matureTime = uint64(w0>>128);
+		vault.lastVoteTime = uint64(w0>>192);
+
+		vault.validatorToVote = w1;
+
+		vault.hedgeValue = uint96(w2);
+		vault.oracle = address(bytes20(uint160(w2>>96)));
+
+		vault.closeoutPenalty = uint64(w3);
+		vault.amount = uint96(w3>>64);
+	}
+
+	function deleteVault(uint sn) internal override {
+		bytes memory snBz = abi.encode(sn);
+		bytes memory vaultBz = new bytes(0); //writing 32 bytes of zero is for deletion
+		(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
+			abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
+		require(success, "SEP101_DEL_FAIL");
+	}
+
+	function safeTransfer(address receiver, uint value) internal override {
+		// IERC20(SEP206Contract).transfer(receiver, value);
+		(bool success, bytes memory _notUsed) = SEP206Contract.call(
+			abi.encodeWithSignature("transfer(address,uint256)", receiver, value));
+		require(success, "SEP206_TRANSFER_FAIL");
+	}
+
 }

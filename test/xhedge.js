@@ -80,7 +80,7 @@ contract("XHedge", async (accounts) => {
     });
 
     it('createVault_lockedAmtTooSmall', async () => {
-        const hedgeValue = 600n * _1e18 / (100000n);
+        const hedgeValue = 600n * _1e18 / (1000000n);
         const amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e13
         await truffleAssert.reverts(
             createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt}),
@@ -98,6 +98,7 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
+        await timeMachine.advanceTime(500 * 24 * 3600);
         const balance0 = await web3.eth.getBalance(alice);
         const result1 = await xhedge.burn(sn, { from: alice });
         const balance1 = await web3.eth.getBalance(alice);
@@ -189,6 +190,7 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(500n * _1e18, { from: oven });
+        await timeMachine.advanceTime(500 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -215,6 +217,7 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(800n * _1e18, { from: oven });
+        await timeMachine.advanceTime(500 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -280,19 +283,18 @@ contract("XHedge", async (accounts) => {
 
         const cutAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt - cutAmt; // 1.4e18
+        const fee = cutAmt * 5n / 1000n;
         const balanceOfLula0 = await web3.eth.getBalance(lula);
         const result1 = await xhedge.changeAmount(sn, newAmt, { from: lula });
         const balanceOfLula1 = await web3.eth.getBalance(lula);
         const gasFee = getGasFee(result1, gasPrice);
-        assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), 
-            cutAmt * 995n / 1000n);
-
+        assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), cutAmt - fee);
         const event = getUpdateAmountEvent(result1);
         assert.equal(event.sn, sn);
-        assert.equal(event.newAmount, newAmt);
+        assert.equal(BigInt(event.newAmount.toString()), newAmt + fee);
 
         const vault = await xhedge.snToVault(sn);
-        assert.equal(vault.amount, newAmt);
+        assert.equal(vault.amount, newAmt + fee);
     });
 
     it('changeAmt_badSN', async () => {
