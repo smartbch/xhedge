@@ -88,6 +88,32 @@ contract("XHedge", async (accounts) => {
         );
     });
 
+    it('createVaultPacked', async () => {
+        const arg0 = initCollateralRate << 64n*3n
+                   | minCollateralRate  << 64n*2n
+                   | closeoutPenalty    << 64n
+                   | BigInt(matureTime);
+        const arg1 = validatorToVote;
+        const arg2 = hedgeValue << 160n
+                   | BigInt(oracle.address);
+        const result = await xhedge.createVaultPacked(arg0, arg1, arg2,
+            { from: alice, value: amt.toString() });
+        const [leverId, hedgeId, sn] = getTokenIds(result);
+
+        const vault = await xhedge.loadVault(sn);
+        assert.equal(vault.initCollateralRate, initCollateralRate);
+        assert.equal(vault.minCollateralRate, minCollateralRate);
+        assert.equal(vault.closeoutPenalty, closeoutPenalty);
+        assert.equal(vault.matureTime, matureTime);
+        assert.equal(vault.validatorToVote, validatorToVote);
+        assert.equal(vault.hedgeValue, hedgeValue);
+        assert.equal(vault.oracle, oracle.address);
+        assert.equal(vault.amount, amt);
+
+        const blk = await web3.eth.getBlock(result.receipt.blockNumber);   
+        assert.equal(vault.lastVoteTime, blk.timestamp);
+    });
+
     it('loadVault_badSN', async () => {
         const vault = await xhedge.loadVault(123456789);
         assert.equal(vault.amount, 0);
@@ -129,12 +155,13 @@ contract("XHedge", async (accounts) => {
     });
 
     it('closeout', async () => {
-        const result0 = await createVaultWithDefaultArgs();
+        const result0 = await createVaultWithDefaultArgs({matureTime: matureTime + 500 * 24 * 3600});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(450n * _1e18, { from: oven });
+        await timeMachine.advanceTime(500 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);

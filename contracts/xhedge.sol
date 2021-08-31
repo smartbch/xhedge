@@ -118,7 +118,7 @@ abstract contract XHedgeBase is ERC721 {
 	// @dev A "packed" version for createVault, to save space of calldata
 	function createVaultPacked(uint initCollateralRate_minCollateralRate_closeoutPenalty_matureTime,
 		uint validatorToVote, uint hedgeValue_oracle) external payable {
-		uint64 initCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>196);
+		uint64 initCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>192);
 		uint64 minCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>128);
 		uint64 closeoutPenalty = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime>>64);
 		uint64 matureTime = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime);
