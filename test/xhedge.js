@@ -58,7 +58,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(await xhedge.ownerOf(leverId), alice);
         assert.equal(await xhedge.ownerOf(hedgeId), alice);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.initCollateralRate, initCollateralRate);
         assert.equal(vault.minCollateralRate, minCollateralRate);
         assert.equal(vault.closeoutPenalty, closeoutPenalty);
@@ -88,8 +88,8 @@ contract("XHedge", async (accounts) => {
         );
     });
 
-    it('snToVault_badSN', async () => {
-        const vault = await xhedge.snToVault(123456789);
+    it('loadVault_badSN', async () => {
+        const vault = await xhedge.loadVault(123456789);
         assert.equal(vault.amount, 0);
     });
 
@@ -107,7 +107,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balance1) - BigInt(balance0), amt - BigInt(gasFee));
         assert.equal(await xhedge.balanceOf(alice), 0);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.amount, 0);
     });
 
@@ -150,7 +150,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.amount, 0);
     });
 
@@ -206,7 +206,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.amount, 0);
     });
 
@@ -233,7 +233,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(BigInt(balanceOfLula1) - BigInt(balanceOfLula0) + BigInt(gasFee), amt - amtToHedger);
         assert.equal(await xhedge.balanceOf(alice), 0);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.amount, 0);
     });
 
@@ -268,7 +268,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(event.sn, sn);
         assert.equal(event.newAmount, newAmt);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.amount, newAmt);
     });
 
@@ -293,7 +293,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(event.sn, sn);
         assert.equal(BigInt(event.newAmount.toString()), newAmt + fee);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.amount, newAmt + fee);
     });
 
@@ -350,7 +350,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(event.sn, sn);
         assert.equal(event.newValidator, 123);
 
-        const vault = await xhedge.snToVault(sn);
+        const vault = await xhedge.loadVault(sn);
         assert.equal(vault.validatorToVote, 123);
     });
 
@@ -376,10 +376,10 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
-        const voteTime0 = (await xhedge.snToVault(sn)).lastVoteTime;
+        const voteTime0 = (await xhedge.loadVault(sn)).lastVoteTime;
         await timeMachine.advanceTime(500 * 24 * 3600);
         const result1 = await xhedge.vote(sn);
-        const voteTime1 = (await xhedge.snToVault(sn)).lastVoteTime;
+        const voteTime1 = (await xhedge.loadVault(sn)).lastVoteTime;
         const newVotes = (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt;
         assert.equal(await xhedge.valToVotes(validatorToVote), newVotes);
 

@@ -24,8 +24,6 @@ struct Vault {
 // are liquidated to the owners of them.
 // The LeverNFT's owner can also vote for a validator on smartBCH.
 abstract contract XHedgeBase is ERC721 {
-	// mapping (uint => Vault) public snToVault;
-
 	// This is an array of counters for calculating a new NFT's id.
 	// we use 128 counters to avoid inter-dependency between the transactions calling createVault
 	uint[128] internal nextSN; // we use an array of nextSN counters to avoid inter-dependency
@@ -64,7 +62,7 @@ abstract contract XHedgeBase is ERC721 {
 
 	// virtual methods implemented by sub-contract
 	function saveVault(uint sn, Vault memory vault) internal virtual;
-	function loadVault(uint sn) internal virtual returns (Vault memory vault);
+	function loadVault(uint sn) public virtual returns (Vault memory vault);
 	function deleteVault(uint sn) internal virtual;
 	function safeTransfer(address receiver, uint value) internal virtual;
 
@@ -295,14 +293,13 @@ abstract contract XHedgeBase is ERC721 {
 }
 
 contract XHedge is XHedgeBase {
-
-	mapping (uint => Vault) public snToVault;
+	mapping (uint => Vault) private snToVault;
 
 	function saveVault(uint sn, Vault memory vault) internal override {
 		snToVault[sn] = vault;
 	}
 
-	function loadVault(uint sn) internal override view returns (Vault memory vault) {
+	function loadVault(uint sn) public override view returns (Vault memory vault) {
 		vault = snToVault[sn];
 	}
 
@@ -317,11 +314,6 @@ contract XHedge is XHedgeBase {
 }
 
 contract XHedgeForSmartBCH is XHedgeBase {
-
-	function snToVault(uint sn) public returns (Vault memory vault) {
-		vault = loadVault(sn);
-	}
-
 	function saveVault(uint sn, Vault memory vault) internal override {
 		bytes memory snBz = abi.encode(sn);
 		(uint w0, uint w2, uint w3) = (0, 0, 0);
@@ -341,7 +333,7 @@ contract XHedgeForSmartBCH is XHedgeBase {
 		require(success, "SEP101_SET_FAIL");
 	}
 
-	function loadVault(uint sn) internal override returns (Vault memory vault) {
+	function loadVault(uint sn) public override returns (Vault memory vault) {
 		bytes memory snBz = abi.encode(sn);
 		(bool success, bytes memory data) = SEP101Contract.delegatecall(
 			abi.encodeWithSignature("get(bytes)", snBz));
