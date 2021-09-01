@@ -423,6 +423,9 @@ contract("XHedge", async (accounts) => {
         const newVotes = (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt;
         assert.equal(await xhedge.valToVotes(validatorToVote), newVotes);
 
+        const blk = await web3.eth.getBlock(result1.receipt.blockNumber);   
+        assert.equal(voteTime1, blk.timestamp);
+
         const event = getVoteEvent(result1);
         assert.equal(event.sn, sn);
         assert.equal(event.validator, validatorToVote);
