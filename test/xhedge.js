@@ -1,8 +1,28 @@
+// console.log(process.argv.join('='));
+const IsSBCH = process.argv.join('=').includes('--network=sbch_');
+console.log('IsSBCH:', IsSBCH);
+
 const timeMachine = require('ganache-time-traveler');
 const truffleAssert = require('truffle-assertions');
 
-const XHedge = artifacts.require("XHedge");
+let   XHedge = artifacts.require("XHedge");
 const Oracle = artifacts.require("MockOracle");
+
+if (IsSBCH) {
+    XHedge = artifacts.require("XHedgeForSmartBCH");
+    truffleAssert.reverts = async function(asyncFn, msg) {
+        try {
+            await asyncFn;
+            throw null;
+        } catch (e) {
+            assert(e, "Expected an error but did not get one");
+            // console.log(JSON.stringify(e));
+            // console.log(e.receipt.outData);
+            // console.log(web3.utils.hexToAscii('0x' + e.receipt.outData));
+            assert.include(web3.utils.hexToAscii('0x' + e.receipt.outData), msg);
+        }
+    };
+}
 
 contract("XHedge", async (accounts) => {
 
@@ -21,27 +41,37 @@ contract("XHedge", async (accounts) => {
     const closeoutPenalty    = _1e18 / 100n; // 0.01
     const matureTime         = Math.floor(Date.now() / 1000) + 30 * 60; // 30m
     const validatorToVote    = 1;
-    const hedgeValue         = 600n * _1e18;
-    const amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
+    let   hedgeValue         = 600n * _1e18;
+    let   amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
 
     let gasPrice;
     let oracle;
     let xhedge;
 
     before(async () => {
-        gasPrice = await web3.eth.getGasPrice();
+        gasPrice = 10000000000;
+        if (!IsSBCH) {
+            gasPrice = await web3.eth.getGasPrice();
+        }
     });
 
     beforeEach(async () => {
-        let snapshot = await timeMachine.takeSnapshot();
-        snapshotId = snapshot['result'];
+        hedgeValue = 600n * _1e18;
+        amt        = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
+
+        if (!IsSBCH) {
+            let snapshot = await timeMachine.takeSnapshot();
+            snapshotId = snapshot['result'];
+        }
 
         oracle = await Oracle.new(initOraclePrice, { from: oven });
         xhedge = await XHedge.new({ from: oven });
     });
 
     afterEach(async() => {
-        await timeMachine.revertToSnapshot(snapshotId);
+        if (!IsSBCH) {
+            await timeMachine.revertToSnapshot(snapshotId);
+        }
     });
 
     it('createVault', async () => {
@@ -133,11 +163,18 @@ contract("XHedge", async (accounts) => {
     });
 
     it('burn', async () => {
-        const result0 = await createVaultWithDefaultArgs();
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs();
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
         const balance0 = await web3.eth.getBalance(alice);
         const result1 = await xhedge.burn(sn, { from: alice });
         const balance1 = await web3.eth.getBalance(alice);
@@ -168,13 +205,20 @@ contract("XHedge", async (accounts) => {
     });
 
     it('closeout', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: matureTime + 500 * 24 * 3600});
+        let result0;
+        if (!IsSBCH) {
+           result0 = await createVaultWithDefaultArgs({matureTime: matureTime + 500 * 24 * 3600});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});   
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(450n * _1e18, { from: oven });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -224,13 +268,20 @@ contract("XHedge", async (accounts) => {
     });
 
     it('liquidate_priceFall_byHedgeOwner', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(500n * _1e18, { from: oven });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -251,13 +302,20 @@ contract("XHedge", async (accounts) => {
     });
 
     it('liquidate_priceRise_byLeverOwner', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(800n * _1e18, { from: oven });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -289,12 +347,19 @@ contract("XHedge", async (accounts) => {
     });
 
     it('changeAmt_increase', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
 
         const addedAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt + addedAmt; // 1.6e18
@@ -313,13 +378,20 @@ contract("XHedge", async (accounts) => {
     });
 
     it('changeAmt_decrease', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(900n * _1e18, { from: oven });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
 
         const cutAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt - cutAmt; // 1.4e18
@@ -343,7 +415,14 @@ contract("XHedge", async (accounts) => {
         );
     });
     it('changeAmt_increase_badMsgVal', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt + 100n, { from: alice, value: 99 }),
@@ -355,17 +434,31 @@ contract("XHedge", async (accounts) => {
         );
     });
     it('changeAmt_decrease_notLeverOwner', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
         await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt - 100n, { from: alice, value: 101 }),
             "NOT_OWNER"
         );
     });
     it('changeAmt_decrease_amtNotEnough', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
@@ -412,12 +505,19 @@ contract("XHedge", async (accounts) => {
     });
 
     it('vote', async () => {
-        const result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        let result0;
+        if (!IsSBCH) {
+            result0 = await createVaultWithDefaultArgs({matureTime: 1});
+        } else {
+            hedgeValue = 600n * _1e18 * 20000000n;
+            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            result0 = await createVaultWithDefaultArgs({matureTime: 1, hedgeValue: hedgeValue, amt: amt});
+        }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
-        const voteTime0 = (await xhedge.loadVault(sn)).lastVoteTime;
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        const voteTime0 = (await xhedge.loadVault.call(sn)).lastVoteTime;
+        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
         const result1 = await xhedge.vote(sn);
         const voteTime1 = (await xhedge.loadVault.call(sn)).lastVoteTime;
         const newVotes = (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt;
@@ -436,7 +536,7 @@ contract("XHedge", async (accounts) => {
     it('vote_minVotes', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await timeMachine.advanceTime(100);
+        if (!IsSBCH) await timeMachine.advanceTime(100);
         await truffleAssert.reverts(
             xhedge.vote(sn), "NOT_ENOUGH_VOTES_FOR_NEW_VAL"
         );
