@@ -4,6 +4,19 @@ const truffleAssert = require('truffle-assertions');
 const XHedge = artifacts.require("XHedgeForSmartBCH");
 const Oracle = artifacts.require("MockOracle");
 
+truffleAssert.reverts = async function(asyncFn, msg) {
+    try {
+        await asyncFn;
+        throw null;
+    } catch (e) {
+        assert(e, "Expected an error but did not get one");
+        // console.log(JSON.stringify(e));
+        // console.log(e.receipt.outData);
+        // console.log(web3.utils.hexToAscii('0x' + e.receipt.outData));
+        assert.include(web3.utils.hexToAscii('0x' + e.receipt.outData), msg);
+    }
+};
+
 contract("XHedgeForSmartBCH", async (accounts) => {
 
     // accounts
@@ -87,7 +100,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     });
 
     it('createVault_msgValNotEnough', async () => {
-        await reverts(
+        await truffleAssert.reverts(
             createVaultWithDefaultArgs({amt: amt - 100n}),
             "NOT_ENOUGH_PAID"
         );
@@ -96,7 +109,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     it('createVault_lockedAmtTooSmall', async () => {
         const hedgeValue = 600n * _1e18 / (1000000n);
         const amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e13
-        await reverts(
+        await truffleAssert.reverts(
             createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt}),
             "LOCKED_AMOUNT_TOO_SMALL"
         );
@@ -154,7 +167,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     });
 
     it('burn_badSN', async () => {
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.burn(123456789), "VAULT_NOT_FOUND"
         );
     });
@@ -162,10 +175,10 @@ contract("XHedgeForSmartBCH", async (accounts) => {
         const result0 = await createVaultWithDefaultArgs();
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.burn(sn, { from: alice }), "NOT_WHOLE_OWNER"
         );
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.burn(sn, { from: lula }), "NOT_WHOLE_OWNER"
         );
     });
@@ -202,28 +215,28 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     it('closeout_notOwner', async () => {
         const result0 = await createVaultWithDefaultArgs();
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.closeout(hedgeId, { from: lula }), "NOT_OWNER"
         );
     });
     it('closeout_notHedge', async () => {
         const result0 = await createVaultWithDefaultArgs();
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.closeout(leverId, { from: alice }), "NOT_HEDGE_NFT"
         );
     });
     it('closeout_alreadyMature', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.closeout(hedgeId, { from: alice }), "ALREADY_MATURE"
         );
     });
     it('closeout_priceTooHigh', async () => {
         const result0 = await createVaultWithDefaultArgs();
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.closeout(hedgeId, { from: alice }), "PRICE_TOO_HIGH"
         );
     });
@@ -289,10 +302,10 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     it('liquidate_notMature', async () => {
         const result0 = await createVaultWithDefaultArgs();
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.liquidate(leverId, { from: alice }), "NOT_MATURE"
         );
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.liquidate(hedgeId, { from: alice }), "NOT_MATURE"
         );
     });
@@ -353,18 +366,18 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     });
 
     it('changeAmt_badSN', async () => {
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeAmount(123456789, 100, { from: alice }), "VAULT_NOT_FOUND"
         );
     });
     it('changeAmt_increase_badMsgVal', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt + 100n, { from: alice, value: 99 }),
             "BAD_MSG_VAL"
         );
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt + 100n, { from: alice, value: 101 }),
             "BAD_MSG_VAL"
         );
@@ -377,7 +390,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         // await timeMachine.advanceTime(500 * 24 * 3600);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt - 100n, { from: alice, value: 101 }),
             "NOT_OWNER"
         );
@@ -394,7 +407,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
 
         const cutAmt = _1e18 / 2n;   // 0.5e18
         const newAmt = amt - cutAmt; // 1.0e18
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeAmount(sn, newAmt, { from: lula }),
             "AMT_NOT_ENOUGH"
         );
@@ -418,7 +431,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     it('changeValidatorToVote_notLeverNFT', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeValidatorToVote(hedgeId, 123, { from: alice }),
             "NOT_LEVER_NFT"
         );
@@ -426,7 +439,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
     it('changeValidatorToVote_notOwner', async () => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.changeValidatorToVote(leverId, 123, { from: lula }),
             "NOT_OWNER"
         );
@@ -461,7 +474,7 @@ contract("XHedgeForSmartBCH", async (accounts) => {
         const result0 = await createVaultWithDefaultArgs({matureTime: 1});
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // await timeMachine.advanceTime(100);
-        await reverts(
+        await truffleAssert.reverts(
             xhedge.vote(sn), "NOT_ENOUGH_VOTES_FOR_NEW_VAL"
         );
     });
@@ -524,14 +537,4 @@ function getVoteEvent(result) {
         incrVotes          : log.args.incrVotes,
         newAccumulatedVotes: log.args.newAccumulatedVotes,
     };
-}
-
-async function reverts(asyncFn) {
-    try {
-        await asyncFn;
-        throw null;
-    } catch (error) {
-        // console.log(error);
-        assert(error, "Expected an error but did not get one");
-    }
 }
