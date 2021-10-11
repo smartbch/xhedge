@@ -366,7 +366,7 @@ contract XHedgeForSmartBCH is XHedgeBase {
 
 	function deleteVault(uint sn) internal override {
 		bytes memory snBz = abi.encode(sn);
-		bytes memory vaultBz = new bytes(0); //writing 32 bytes of zero is for deletion
+		bytes memory vaultBz = new bytes(0); //writing zero-length bytes is for deletion
 		(bool success, bytes memory _notUsed) = SEP101Contract.delegatecall(
 			abi.encodeWithSignature("set(bytes,bytes)", snBz, vaultBz));
 		require(success, "SEP101_DEL_FAIL");
