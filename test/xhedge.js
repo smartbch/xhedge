@@ -34,7 +34,7 @@ contract("XHedge", async (accounts) => {
 
     const _1e18              = 10n ** 18n;
     const initOraclePrice    = 600n * _1e18;
-  
+
     // default createVault() args
     const initCollateralRate = _1e18 / 2n; // 0.5
     const minCollateralRate  = _1e18 / 5n; // 0.2
@@ -98,7 +98,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.oracle, oracle.address);
         assert.equal(vault.amount, amt);
 
-        const blk = await web3.eth.getBlock(result.receipt.blockNumber);   
+        const blk = await web3.eth.getBlock(result.receipt.blockNumber);
         assert.equal(vault.lastVoteTime, blk.timestamp);
     });
 
@@ -131,6 +131,20 @@ contract("XHedge", async (accounts) => {
         );
     });
 
+    it('createVault_collateral_rates_not_match', async () => {
+        await truffleAssert.reverts(
+            createVaultWithDefaultArgs({initCollateralRate: minCollateralRate - 1n}),
+            "COLLATERAL_RATES_NOT_MATCH"
+        );
+    });
+
+    it('createVault_invalid_mature_time', async () => {
+        await truffleAssert.reverts(
+            createVaultWithDefaultArgs({matureTime:  matureTime- 31*60}),
+            "INVALID_MATURE_TIME"
+        );
+    });
+
     it('createVaultPacked', async () => {
         const arg0 = initCollateralRate << 64n*3n
                    | minCollateralRate  << 64n*2n
@@ -153,7 +167,7 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.oracle, oracle.address);
         assert.equal(vault.amount, amt);
 
-        const blk = await web3.eth.getBlock(result.receipt.blockNumber);   
+        const blk = await web3.eth.getBlock(result.receipt.blockNumber);
         assert.equal(vault.lastVoteTime, blk.timestamp);
     });
 
@@ -211,7 +225,7 @@ contract("XHedge", async (accounts) => {
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
             amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
-            result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});   
+            result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
@@ -368,7 +382,7 @@ contract("XHedge", async (accounts) => {
         const balanceOfAlice1 = await web3.eth.getBalance(alice);
         const gasFee = getGasFee(result1, gasPrice);
         assert.equal(BigInt(balanceOfAlice0) - BigInt(balanceOfAlice1) - BigInt(gasFee), addedAmt);
-    
+
         const event = getUpdateAmountEvent(result1);
         assert.equal(event.sn, sn);
         assert.equal(event.newAmount, newAmt);
@@ -523,7 +537,7 @@ contract("XHedge", async (accounts) => {
         const newVotes = (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt;
         assert.equal(await xhedge.valToVotes(validatorToVote), newVotes);
 
-        const blk = await web3.eth.getBlock(result1.receipt.blockNumber);   
+        const blk = await web3.eth.getBlock(result1.receipt.blockNumber);
         assert.equal(voteTime1, blk.timestamp);
 
         const event = getVoteEvent(result1);
@@ -545,10 +559,11 @@ contract("XHedge", async (accounts) => {
     async function createVaultWithDefaultArgs(args) {
         let _matureTime = args && args.matureTime || matureTime;
         let _hedgeValue = args && args.hedgeValue || hedgeValue;
+        let _initCollateralRate = args && args.initCollateralRate || initCollateralRate;
         let _amt = args && args.amt || amt;
 
         return await xhedge.createVault(
-            initCollateralRate.toString(),
+            _initCollateralRate.toString(),
             minCollateralRate.toString(),
             closeoutPenalty.toString(),
             _matureTime,
