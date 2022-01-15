@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.0;
+pragma solidity 0.8.10;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -300,7 +300,7 @@ abstract contract XHedgeBase is ERC721 {
             emit Vote(sn, val, incrVotes, newVotes);
             valToVotes[val] = newVotes;
         }
-        vault.lastVoteTime = uint32(block.timestamp);
+        vault.lastVoteTime = uint64(block.timestamp);
     }
 }
 
