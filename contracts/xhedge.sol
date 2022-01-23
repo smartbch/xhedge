@@ -320,7 +320,8 @@ contract XHedge is XHedgeBase {
     }
 
     function safeTransfer(address receiver, uint value) internal override {
-        receiver.call{value : value, gas : 9000}("");
+        (bool success, bytes memory _notUsed) = receiver.call{value : value, gas : 9000}("");
+        require(success, "TRANSFER_FAIL");
     }
 
 }
