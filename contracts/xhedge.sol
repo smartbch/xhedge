@@ -29,11 +29,11 @@ abstract contract XHedgeBase is ERC721 {
     uint[128] internal nextSN; // we use an array of nextSN counters to avoid inter-dependency
 
 
-    // The validators' accumulated votes in current epoch. When switching epoch, this variable will be
+    // The validators' accumulated votes in current epoch. When switching epoch, this variable will
     // be cleared by the underlying golang logic in staking contract
     mapping(uint => uint) public valToVotes;
 
-    // The validators who have ever get voted in current epoch. When switching epoch, this variable will be
+    // The validators who have ever get voted in current epoch. When switching epoch, this variable will
     // be cleared by the underlying golang logic in staking contract
     uint[] public validators;
 
