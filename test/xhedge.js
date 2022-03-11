@@ -41,8 +41,8 @@ contract("XHedge", async (accounts) => {
     const closeoutPenalty    = _1e18 / 100n; // 0.01
     const matureTime         = Math.floor(Date.now() / 1000) + 30 * 60; // 30m
     const validatorToVote    = 1;
-    let   hedgeValue         = 600n * _1e18;
-    let   amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
+    let   hedgeValue         = 600n * _1e18 * 50n;
+    let   amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 75e18
 
     let gasPrice;
     let oracle;
@@ -56,8 +56,8 @@ contract("XHedge", async (accounts) => {
     });
 
     beforeEach(async () => {
-        hedgeValue = 600n * _1e18;
-        amt        = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e18
+        hedgeValue = 600n * _1e18 * 50n;
+        amt        = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 75e18
 
         if (!IsSBCH) {
             let snapshot = await timeMachine.takeSnapshot();
@@ -188,7 +188,7 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         // console.log(leverId, hedgeId, sn);
 
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
         const balance0 = await web3.eth.getBalance(alice);
         const result1 = await xhedge.burn(sn, { from: alice });
         const balance1 = await web3.eth.getBalance(alice);
@@ -232,7 +232,7 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(450n * _1e18, { from: oven });
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -296,7 +296,7 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(500n * _1e18, { from: oven });
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -330,7 +330,7 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(800n * _1e18, { from: oven });
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
 
         const balanceOfAlice0 = await web3.eth.getBalance(alice);
         const balanceOfLula0 = await web3.eth.getBalance(lula);
@@ -374,7 +374,7 @@ contract("XHedge", async (accounts) => {
         // console.log(leverId, hedgeId, sn);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
 
         const addedAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt + addedAmt; // 1.6e18
@@ -406,7 +406,7 @@ contract("XHedge", async (accounts) => {
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
         await oracle.setPrice(900n * _1e18, { from: oven });
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
 
         const cutAmt = _1e18 / 10n;  // 0.1e18
         const newAmt = amt - cutAmt; // 1.4e18
@@ -459,7 +459,7 @@ contract("XHedge", async (accounts) => {
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
         await truffleAssert.reverts(
             xhedge.changeAmount(sn, amt - 100n, { from: alice, value: 101 }),
             "NOT_OWNER"
@@ -477,7 +477,7 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result0);
 
         await xhedge.transferFrom(alice, lula, leverId, { from: alice });
-        await timeMachine.advanceTime(500 * 24 * 3600);
+        await timeMachine.advanceTime(10 * 24 * 3600);
 
         const cutAmt = _1e18 / 2n;   // 0.5e18
         const newAmt = amt - cutAmt; // 1.0e18
@@ -532,10 +532,36 @@ contract("XHedge", async (accounts) => {
         // console.log(leverId, hedgeId, sn);
 
         const voteTime0 = (await xhedge.loadVault.call(sn)).lastVoteTime;
-        if (!IsSBCH) await timeMachine.advanceTime(500 * 24 * 3600);
+        if (!IsSBCH) await timeMachine.advanceTime(10 * 24 * 3600);
         const result1 = await xhedge.vote(sn);
         const voteTime1 = (await xhedge.loadVault.call(sn)).lastVoteTime;
         const newVotes = (BigInt(voteTime1.toString()) - BigInt(voteTime0.toString())) * amt;
+        assert.equal(await xhedge.valToVotes(validatorToVote), newVotes);
+
+        const blk = await web3.eth.getBlock(result1.receipt.blockNumber);
+        assert.equal(voteTime1, blk.timestamp);
+
+        const event = getVoteEvent(result1);
+        assert.equal(event.sn, sn);
+        assert.equal(event.validator, validatorToVote);
+        assert.equal(event.incrVotes, newVotes);
+        assert.equal(event.newAccumulatedVotes, newVotes);
+    });
+
+    it('vote_maxDays', async () => {
+        if (IsSBCH) {
+            return;
+        }
+
+        let result0 = await createVaultWithDefaultArgs();
+        const [leverId, hedgeId, sn] = getTokenIds(result0);
+        // console.log(leverId, hedgeId, sn);
+
+        const voteTime0 = (await xhedge.loadVault.call(sn)).lastVoteTime;
+        await timeMachine.advanceTime(15 * 24 * 3600);
+        const result1 = await xhedge.vote(sn);
+        const voteTime1 = (await xhedge.loadVault.call(sn)).lastVoteTime;
+        const newVotes = BigInt(14 * 24 * 3600) * amt;
         assert.equal(await xhedge.valToVotes(validatorToVote), newVotes);
 
         const blk = await web3.eth.getBlock(result1.receipt.blockNumber);

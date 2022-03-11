@@ -51,6 +51,7 @@ abstract contract XHedgeBase is ERC721 {
 
     // To prevent dusting attack, we need to set a lower bound for coin-days when voting for a new validator
     uint constant MinimumVotes = 500 * 10 ** 18 * 24 * 3600; // 500 coin-days
+    uint constant MaxDays      = 14 * 24 * 3600;
 
     // @dev The address of precompile smart contract for SEP101
     address constant SEP101Contract = address(bytes20(uint160(0x2712)));
@@ -289,7 +290,11 @@ abstract contract XHedgeBase is ERC721 {
 
     function _vote(Vault memory vault, uint sn) internal {
         if (block.timestamp > vault.lastVoteTime) {
-            uint incrVotes = vault.amount * (block.timestamp - vault.lastVoteTime);
+            uint elapsed = block.timestamp - vault.lastVoteTime;
+            if (elapsed > MaxDays) {
+                elapsed = MaxDays;
+            }
+            uint incrVotes = vault.amount * elapsed;
             uint val = vault.validatorToVote;
             uint oldVotes = valToVotes[val];
             if (oldVotes == 0) {// find a new validator
