@@ -58,7 +58,11 @@ module.exports = {
             network_id: "10001",
             gasPrice: 10000000000,
         },
-
+        sbch_amber: {
+          provider: () => new HDWalletProvider(mnemonic, 'https://moeing.tech:9545'),
+          network_id: "10001",
+          gasPrice: 10000000000,
+        },
         // Another network with more advanced options...
         // advanced: {
         // port: 8777,             // Custom port
