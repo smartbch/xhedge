@@ -63,6 +63,11 @@ module.exports = {
           network_id: "10001",
           gasPrice: 10000000000,
         },
+        sbch_mainnet: {
+          provider: () => new HDWalletProvider(mnemonic, 'https://smartbch.fountainhead.cash/mainnet'),
+          network_id: "10000",
+          gasPrice: 1050000000,
+        },
         // Another network with more advanced options...
         // advanced: {
         // port: 8777,             // Custom port
