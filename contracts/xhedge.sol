@@ -93,7 +93,7 @@ abstract contract XHedgeBase is ERC721 {
         uint validatorToVote,
         uint96 hedgeValue,
         address oracle) public payable {
-        require(initCollateralRatio >= minCollateralRatio, "COLLATERAL_RATES_NOT_MATCH");
+        require(initCollateralRatio >= minCollateralRatio, "COLLATERAL_RATIOS_NOT_MATCH");
         Vault memory vault;
         vault.initCollateralRatio = initCollateralRatio;
         vault.minCollateralRatio = minCollateralRatio;

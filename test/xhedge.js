@@ -36,13 +36,13 @@ contract("XHedge", async (accounts) => {
     const initOraclePrice    = 600n * _1e18;
 
     // default createVault() args
-    const initCollateralRate = _1e18 / 2n; // 0.5
-    const minCollateralRate  = _1e18 / 5n; // 0.2
+    const initCollateralRatio= _1e18 / 2n; // 0.5
+    const minCollateralRatio = _1e18 / 5n; // 0.2
     const closeoutPenalty    = _1e18 / 100n; // 0.01
     const matureTime         = Math.floor(Date.now() / 1000) + 30 * 60; // 30m
     const validatorToVote    = 1;
     let   hedgeValue         = 600n * _1e18 * 50n;
-    let   amt                = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 75e18
+    let   amt                = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice; // 75e18
 
     let gasPrice;
     let oracle;
@@ -57,7 +57,7 @@ contract("XHedge", async (accounts) => {
 
     beforeEach(async () => {
         hedgeValue = 600n * _1e18 * 50n;
-        amt        = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 75e18
+        amt        = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice; // 75e18
 
         if (!IsSBCH) {
             let snapshot = await timeMachine.takeSnapshot();
@@ -89,8 +89,8 @@ contract("XHedge", async (accounts) => {
         assert.equal(await xhedge.ownerOf(hedgeId), alice);
 
         const vault = await xhedge.loadVault.call(sn);
-        assert.equal(vault.initCollateralRate, initCollateralRate);
-        assert.equal(vault.minCollateralRate, minCollateralRate);
+        assert.equal(vault.initCollateralRatio, initCollateralRatio);
+        assert.equal(vault.minCollateralRatio, minCollateralRatio);
         assert.equal(vault.closeoutPenalty, closeoutPenalty);
         assert.equal(vault.matureTime, matureTime);
         assert.equal(vault.validatorToVote, validatorToVote);
@@ -124,17 +124,17 @@ contract("XHedge", async (accounts) => {
 
     it('createVault_lockedAmtTooSmall', async () => {
         const hedgeValue = 600n * _1e18 / (1000000n);
-        const amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice; // 1.5e13
+        const amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice; // 1.5e13
         await truffleAssert.reverts(
             createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt}),
             "LOCKED_AMOUNT_TOO_SMALL"
         );
     });
 
-    it('createVault_collateral_rates_not_match', async () => {
+    it('createVault_collateral_ratios_not_match', async () => {
         await truffleAssert.reverts(
-            createVaultWithDefaultArgs({initCollateralRate: minCollateralRate - 1n}),
-            "COLLATERAL_RATES_NOT_MATCH"
+            createVaultWithDefaultArgs({initCollateralRatio: minCollateralRatio - 1n}),
+            "COLLATERAL_RATIOS_NOT_MATCH"
         );
     });
 
@@ -146,9 +146,9 @@ contract("XHedge", async (accounts) => {
     });
 
     it('createVaultPacked', async () => {
-        const arg0 = initCollateralRate << 64n*3n
-                   | minCollateralRate  << 64n*2n
-                   | closeoutPenalty    << 64n
+        const arg0 = initCollateralRatio << 64n*3n
+                   | minCollateralRatio  << 64n*2n
+                   | closeoutPenalty     << 64n
                    | BigInt(matureTime);
         const arg1 = validatorToVote;
         const arg2 = hedgeValue << 160n
@@ -158,8 +158,8 @@ contract("XHedge", async (accounts) => {
         const [leverId, hedgeId, sn] = getTokenIds(result);
 
         const vault = await xhedge.loadVault.call(sn);
-        assert.equal(vault.initCollateralRate, initCollateralRate);
-        assert.equal(vault.minCollateralRate, minCollateralRate);
+        assert.equal(vault.initCollateralRatio, initCollateralRatio);
+        assert.equal(vault.minCollateralRatio, minCollateralRatio);
         assert.equal(vault.closeoutPenalty, closeoutPenalty);
         assert.equal(vault.matureTime, matureTime);
         assert.equal(vault.validatorToVote, validatorToVote);
@@ -182,7 +182,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -224,7 +224,7 @@ contract("XHedge", async (accounts) => {
            result0 = await createVaultWithDefaultArgs({matureTime: matureTime + 500 * 24 * 3600});
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -288,7 +288,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -322,7 +322,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -367,7 +367,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -398,7 +398,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -435,7 +435,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -454,7 +454,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -471,7 +471,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -525,7 +525,7 @@ contract("XHedge", async (accounts) => {
             result0 = await createVaultWithDefaultArgs();
         } else {
             hedgeValue = 600n * _1e18 * 20000000n;
-            amt = (_1e18 + initCollateralRate) * hedgeValue / initOraclePrice;
+            amt = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice;
             result0 = await createVaultWithDefaultArgs({hedgeValue: hedgeValue, amt: amt});
         }
         const [leverId, hedgeId, sn] = getTokenIds(result0);
@@ -586,12 +586,12 @@ contract("XHedge", async (accounts) => {
     async function createVaultWithDefaultArgs(args) {
         let _matureTime = args && args.matureTime || matureTime;
         let _hedgeValue = args && args.hedgeValue || hedgeValue;
-        let _initCollateralRate = args && args.initCollateralRate || initCollateralRate;
+        let _initCollateralRatio = args && args.initCollateralRatio || initCollateralRatio;
         let _amt = args && args.amt || amt;
 
         return await xhedge.createVault(
-            _initCollateralRate.toString(),
-            minCollateralRate.toString(),
+            _initCollateralRatio.toString(),
+            minCollateralRatio.toString(),
             closeoutPenalty.toString(),
             _matureTime,
             validatorToVote,
