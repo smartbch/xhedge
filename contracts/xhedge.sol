@@ -9,8 +9,8 @@ interface PriceOracle {
 }
 
     struct Vault {
-        uint64 initCollateralRate;
-        uint64 minCollateralRate;
+        uint64 initCollateralRatio;
+        uint64 minCollateralRatio;
         uint64 matureTime;
         uint64 lastVoteTime;
         uint validatorToVote;
@@ -72,8 +72,8 @@ abstract contract XHedgeBase is ERC721 {
 
     // @dev Create a vault which locks some BCH, and mint a pair of LeverNFT/HedgeNFT
     // The id of LeverNFT (HedgeNFT) is `sn*2+1` (`sn*2`), respectively, where `sn` is the serial number of the vault.
-    // @param initCollateralRate the initial collateral rate
-    // @param minCollateralRate the minimum collateral rate
+    // @param initCollateralRatio the initial collateral ratio
+    // @param minCollateralRatio the minimum collateral ratio
     // @param closeoutPenalty the penalty for LeverNFT's owner at closeout, with 18 decimal digits
     // @param matureTime the time when any owner of this pair of NFTs can initiate liquidation without penalty
     // @param validatorToVote the validator that the LeverNFT's owner would like to support
@@ -86,17 +86,17 @@ abstract contract XHedgeBase is ERC721 {
     // - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dusting attack
 
     function createVault(
-        uint64 initCollateralRate,
-        uint64 minCollateralRate,
+        uint64 initCollateralRatio,
+        uint64 minCollateralRatio,
         uint64 closeoutPenalty,
         uint64 matureTime,
         uint validatorToVote,
         uint96 hedgeValue,
         address oracle) public payable {
-        require(initCollateralRate >= minCollateralRate, "COLLATERAL_RATES_NOT_MATCH");
+        require(initCollateralRatio >= minCollateralRatio, "COLLATERAL_RATES_NOT_MATCH");
         Vault memory vault;
-        vault.initCollateralRate = initCollateralRate;
-        vault.minCollateralRate = minCollateralRate;
+        vault.initCollateralRatio = initCollateralRatio;
+        vault.minCollateralRatio = minCollateralRatio;
         vault.closeoutPenalty = closeoutPenalty;
         vault.lastVoteTime = uint64(block.timestamp);
         require(matureTime > vault.lastVoteTime, "INVALID_MATURE_TIME");
@@ -105,7 +105,7 @@ abstract contract XHedgeBase is ERC721 {
         vault.validatorToVote = validatorToVote;
         vault.oracle = oracle;
         uint price = PriceOracle(oracle).getPrice();
-        uint amount = (10 ** 18 + uint(initCollateralRate)) * uint(hedgeValue) / price;
+        uint amount = (10 ** 18 + uint(initCollateralRatio)) * uint(hedgeValue) / price;
         require(msg.value >= amount, "NOT_ENOUGH_PAID");
         require(amount >= GlobalMinimumAmount, "LOCKED_AMOUNT_TOO_SMALL");
         vault.amount = uint96(amount);
@@ -124,15 +124,15 @@ abstract contract XHedgeBase is ERC721 {
     }
 
     // @dev A "packed" version for createVault, to save space of calldata
-    function createVaultPacked(uint initCollateralRate_minCollateralRate_closeoutPenalty_matureTime,
+    function createVaultPacked(uint initCollateralRatio_minCollateralRatio_closeoutPenalty_matureTime,
         uint validatorToVote, uint hedgeValue_oracle) external payable {
-        uint64 initCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime >> 192);
-        uint64 minCollateralRate = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime >> 128);
-        uint64 closeoutPenalty = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime >> 64);
-        uint64 matureTime = uint64(initCollateralRate_minCollateralRate_closeoutPenalty_matureTime);
+        uint64 initCollateralRatio = uint64(initCollateralRatio_minCollateralRatio_closeoutPenalty_matureTime >> 192);
+        uint64 minCollateralRatio = uint64(initCollateralRatio_minCollateralRatio_closeoutPenalty_matureTime >> 128);
+        uint64 closeoutPenalty = uint64(initCollateralRatio_minCollateralRatio_closeoutPenalty_matureTime >> 64);
+        uint64 matureTime = uint64(initCollateralRatio_minCollateralRatio_closeoutPenalty_matureTime);
         uint96 hedgeValue = uint96(hedgeValue_oracle >> 160);
         address oracle = address(bytes20(uint160(hedgeValue_oracle)));
-        return createVault(initCollateralRate, minCollateralRate, closeoutPenalty,
+        return createVault(initCollateralRatio, minCollateralRatio, closeoutPenalty,
             matureTime, validatorToVote, hedgeValue, oracle);
     }
 
@@ -143,7 +143,7 @@ abstract contract XHedgeBase is ERC721 {
     //
     // - The token must exist (not burnt yet)
     // - Current timestamp must be smaller than the mature time
-    // - Current price must be low enough such that collateral rate is below the predefined minimum value
+    // - Current price must be low enough such that collateral ratio is below the predefined minimum value
     function closeout(uint token) external {
         _liquidate(token, true);
     }
@@ -169,7 +169,7 @@ abstract contract XHedgeBase is ERC721 {
             require(token % 2 == 0, "NOT_HEDGE_NFT");
             // a HedgeNFT
             require(block.timestamp < uint(vault.matureTime), "ALREADY_MATURE");
-            uint minAmount = (10 ** 18 + uint(vault.minCollateralRate)) * uint(vault.hedgeValue) / price;
+            uint minAmount = (10 ** 18 + uint(vault.minCollateralRatio)) * uint(vault.hedgeValue) / price;
             require(vault.amount <= minAmount, "PRICE_TOO_HIGH");
         } else {
             require(block.timestamp >= uint(vault.matureTime), "NOT_MATURE");
@@ -227,7 +227,7 @@ abstract contract XHedgeBase is ERC721 {
     // - The sender must be the LeverNFT's owner, if the amount is decreased
     // - Enough BCH must be transferred when calling this function, if the amount is increased
     // - The locked BCH must be no less than `GlobalMinimumAmount`, to prevent dusting attack
-    // - The new amount of locked BCH must meet the initial collateral rate requirement
+    // - The new amount of locked BCH must meet the initial collateral ratio requirement
     function changeAmount(uint sn, uint96 newAmount) external payable {
         Vault memory vault = loadVault(sn);
         require(vault.amount != 0, "VAULT_NOT_FOUND");
@@ -251,7 +251,7 @@ abstract contract XHedgeBase is ERC721 {
         newAmount = newAmount + uint96(fee);
         uint price = PriceOracle(vault.oracle).getPrice();
         vault.hedgeValue = vault.hedgeValue + uint96(fee * price / 10 ** 18/*fee as USD*/);
-        uint minAmount = (10 ** 18 + uint(vault.initCollateralRate)) * uint(vault.hedgeValue) / price;
+        uint minAmount = (10 ** 18 + uint(vault.initCollateralRatio)) * uint(vault.hedgeValue) / price;
         require(newAmount > minAmount && newAmount >= GlobalMinimumAmount, "AMT_NOT_ENOUGH");
         vault.amount = newAmount;
         saveVault(sn, vault);
@@ -337,8 +337,8 @@ contract XHedgeForSmartBCH is XHedgeBase {
         (uint w0, uint w2, uint w3) = (0, 0, 0);
         w0 = uint(vault.lastVoteTime);
         w0 = (w0 << 64) | uint(vault.matureTime);
-        w0 = (w0 << 64) | uint(vault.minCollateralRate);
-        w0 = (w0 << 64) | uint(vault.initCollateralRate);
+        w0 = (w0 << 64) | uint(vault.minCollateralRatio);
+        w0 = (w0 << 64) | uint(vault.initCollateralRatio);
 
         w2 = uint(uint160(bytes20(vault.oracle)));
         w2 = (w2 << 96) | uint(vault.hedgeValue);
@@ -368,8 +368,8 @@ contract XHedgeForSmartBCH is XHedgeBase {
 
         (uint w0, uint w1, uint w2, uint w3) = abi.decode(vaultBz, (uint, uint, uint, uint));
 
-        vault.initCollateralRate = uint64(w0);
-        vault.minCollateralRate = uint64(w0 >> 64);
+        vault.initCollateralRatio = uint64(w0);
+        vault.minCollateralRatio = uint64(w0 >> 64);
         vault.matureTime = uint64(w0 >> 128);
         vault.lastVoteTime = uint64(w0 >> 192);
 
