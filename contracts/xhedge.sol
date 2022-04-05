@@ -115,7 +115,7 @@ abstract contract XHedgeBase is ERC721 {
         uint idx = uint160(msg.sender) & 127;
         uint sn = nextSN[idx];
         nextSN[idx] = sn + 1;
-        sn = (sn << 8) + (idx << 1);
+        sn = (sn << 7) + idx;
         _safeMint(msg.sender, (sn << 1) + 1);
         //the LeverNFT
         _safeMint(msg.sender, sn << 1);
