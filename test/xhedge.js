@@ -102,6 +102,28 @@ contract("XHedge", async (accounts) => {
         assert.equal(vault.lastVoteTime, blk.timestamp);
     });
 
+    it('createVault_sn', async () => {
+        let _hedgeValue = 600n * _1e18;
+        let _amt        = (_1e18 + initCollateralRatio) * _hedgeValue / initOraclePrice;
+
+        const result1 = await createVaultWithDefaultArgs(
+            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
+        const result2 = await createVaultWithDefaultArgs(
+            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
+        const result3 = await createVaultWithDefaultArgs(
+            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
+        const result4 = await createVaultWithDefaultArgs(
+            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
+        const result5 = await createVaultWithDefaultArgs(
+            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
+
+        assert.deepEqual(getTokenIdsHex(result1), [ '0x65',  '0x64',  '0x32']);
+        assert.deepEqual(getTokenIdsHex(result2), ['0x165', '0x164',  '0xb2']);
+        assert.deepEqual(getTokenIdsHex(result3), ['0x265', '0x264', '0x132']);
+        assert.deepEqual(getTokenIdsHex(result4), ['0x365', '0x364', '0x1b2']);
+        assert.deepEqual(getTokenIdsHex(result5), ['0x465', '0x464', '0x232']);
+    });
+
     it('createVault_returnOverpaid', async () => {
         const balance0 = await web3.eth.getBalance(alice);
         const result = await createVaultWithDefaultArgs({amt: amt + _1e18});
@@ -605,6 +627,15 @@ contract("XHedge", async (accounts) => {
 
 function getGasFee(result, gasPrice) {
     return result.receipt.gasUsed * gasPrice;
+}
+
+function getTokenIdsHex(result) {
+    const [leverId, hedgeId, sn] = getTokenIds(result);
+    return [
+        '0x' + Number(leverId).toString(16),
+        '0x' + Number(hedgeId).toString(16),
+        '0x' + Number(sn).toString(16),
+    ];
 }
 
 function getTokenIds(result) {
