@@ -40,7 +40,7 @@ contract("XHedge", async (accounts) => {
     const minCollateralRatio = _1e18 / 5n; // 0.2
     const closeoutPenalty    = _1e18 / 100n; // 0.01
     const matureTime         = Math.floor(Date.now() / 1000) + 30 * 60; // 30m
-    const validatorToVote    = 1;
+    const validatorToVote    = 123;
     let   hedgeValue         = 600n * _1e18 * 50n;
     let   amt                = (_1e18 + initCollateralRatio) * hedgeValue / initOraclePrice; // 75e18
 
@@ -106,16 +106,11 @@ contract("XHedge", async (accounts) => {
         let _hedgeValue = 600n * _1e18;
         let _amt        = (_1e18 + initCollateralRatio) * _hedgeValue / initOraclePrice;
 
-        const result1 = await createVaultWithDefaultArgs(
-            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
-        const result2 = await createVaultWithDefaultArgs(
-            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
-        const result3 = await createVaultWithDefaultArgs(
-            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
-        const result4 = await createVaultWithDefaultArgs(
-            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
-        const result5 = await createVaultWithDefaultArgs(
-            {from: accounts[9], hedgeValue: _hedgeValue, amt: _amt});
+        const result1 = await createVaultWithDefaultArgs({hedgeValue: _hedgeValue, amt: _amt});
+        const result2 = await createVaultWithDefaultArgs({hedgeValue: _hedgeValue, amt: _amt});
+        const result3 = await createVaultWithDefaultArgs({hedgeValue: _hedgeValue, amt: _amt});
+        const result4 = await createVaultWithDefaultArgs({hedgeValue: _hedgeValue, amt: _amt});
+        const result5 = await createVaultWithDefaultArgs({hedgeValue: _hedgeValue, amt: _amt});
 
         assert.deepEqual(getTokenIdsHex(result1), [ '0x65',  '0x64',  '0x32']);
         assert.deepEqual(getTokenIdsHex(result2), ['0x165', '0x164',  '0xb2']);
@@ -605,18 +600,37 @@ contract("XHedge", async (accounts) => {
         );
     });
 
+    it('skipVote', async () => {
+        let _hedgeValue = 600n * _1e18;
+        let _amt        = (_1e18 + initCollateralRatio) * _hedgeValue / initOraclePrice;
+
+        const result1 = await createVaultWithDefaultArgs(
+            {hedgeValue: _hedgeValue, amt: _amt, validatorToVote: '0'});
+        const [leverId1, hedgeId1, sn1] = getTokenIds(result1);
+        await xhedge.changeAmount(sn1, _amt * 2n, { from: alice, value: _amt.toString() });
+        await xhedge.burn(sn1, { from: alice });
+
+        const result2 = await createVaultWithDefaultArgs(
+            {hedgeValue: _hedgeValue, amt: _amt, validatorToVote: '0'});
+        const [leverId2, hedgeId2, sn2] = getTokenIds(result2);
+        await oracle.setPrice(450n * _1e18, { from: oven });
+        if (!IsSBCH) await timeMachine.advanceTime(100);
+        await xhedge.closeout(hedgeId2, { from: alice });
+    });
+
     async function createVaultWithDefaultArgs(args) {
         let _matureTime = args && args.matureTime || matureTime;
         let _hedgeValue = args && args.hedgeValue || hedgeValue;
         let _initCollateralRatio = args && args.initCollateralRatio || initCollateralRatio;
         let _amt = args && args.amt || amt;
+        let _validatorToVote = args && args.validatorToVote || validatorToVote;
 
         return await xhedge.createVault(
             _initCollateralRatio.toString(),
             minCollateralRatio.toString(),
             closeoutPenalty.toString(),
             _matureTime,
-            validatorToVote,
+            _validatorToVote,
             _hedgeValue.toString(),
             oracle.address,
             { from: alice, value: _amt.toString() }
