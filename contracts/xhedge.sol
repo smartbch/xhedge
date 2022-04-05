@@ -289,7 +289,7 @@ abstract contract XHedgeBase is ERC721 {
     }
 
     function _vote(Vault memory vault, uint sn) internal {
-        if (block.timestamp > vault.lastVoteTime) {
+        if (vault.validatorToVote != 0 && block.timestamp > vault.lastVoteTime) {
             uint elapsed = block.timestamp - vault.lastVoteTime;
             if (elapsed > MaxDays) {
                 elapsed = MaxDays;
