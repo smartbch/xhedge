@@ -1,7 +1,7 @@
 {
   "devDependencies": {
     "@openzeppelin/contracts": "^4.3.2",
-    "@truffle/hdwallet-provider": "^1.5.1",
+    "@truffle/hdwallet-provider": "^2.0.0",
     "cron": "^1.8.2",
     "ganache-time-traveler": "^1.0.16",
     "solidity-coverage": "^0.7.18",
