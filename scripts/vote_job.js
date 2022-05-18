@@ -25,16 +25,20 @@ async function main() {
 }
 
 async function voteVaults(xh) {
+    console.log(new Date());
     for (const sn of xhSNs) {
-        console.log(new Date());
-        console.log('query vault, sn=', sn);
-        const vault = await xh.loadVault.call(sn);
-        console.log(vault);
-        console.log('validatorToVote:', BigInt(vault.validatorToVote).toString(16));
-        
-        console.log('vote...');
-        const tx = await xh.vote(sn);
-        console.log('tx:', tx);
+        try {
+            console.log('query vault, sn=', sn);
+            const vault = await xh.loadVault.call(sn);
+            console.log(vault);
+            console.log('validatorToVote:', BigInt(vault.validatorToVote).toString(16));
+            
+            console.log('vote...');
+            const tx = await xh.vote(sn);
+            console.log('tx:', tx);
+        } catch (err) {
+            console.log('failed to vote!',err);
+        }
     }
 }
 
